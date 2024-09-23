@@ -61,6 +61,7 @@ now schedule other activities.
 #### Arguments
 
 None
-### Installation
+
+## Credits
 
 [Compass icons created by Dimitry Miroliubov - Flaticon](https://www.flaticon.com/free-icons/compass)
