@@ -1,4 +1,5 @@
 # Explorer
+
 Developer's Automapping tool for Mudlet
 
 ## Description
@@ -18,11 +19,10 @@ In Mudlet, type `explore` to see the help information for this package.
 * `explore set <preference> <value>` - Set a preference to a value
 
   Available preferences:
-  * `speed` - Set the speed of exploration in seconds per step (default: 0.0)
-  * `shuffle_max` - Set the maximum number of steps to take before selecting a
+  * `shuffle` - Set the maximum number of steps to take before selecting a
      random exit stub to explore (default: 100). If set to 0, Explorer will not
      shuffle.
-  * `zoom_level` - Set the zoom level of the map during exploration (default:
+  * `zoom` - Set the zoom level of the map during exploration (default:
     10)
 
 ## Events
@@ -41,7 +41,6 @@ proceed to explore a new room.
 #### Arguments
 
 * `current room id` - The id of the room the player has arrived in.
-* `previous room id` - The id of the room the player was in before moving.
 
 ### `sysSpeedwalkStarted`
 

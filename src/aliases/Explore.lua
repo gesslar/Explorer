@@ -10,11 +10,10 @@ Syntax: explore [command]
   explore set <preference> <value> - Set a preference to a value
 
   Available preferences:
-    speed         - Set the speed of exploration (default: 0.0)
-    shuffle_max   - Set the maximum number of steps to take before selecting a
-                    random exit stub to explore (default: 100)
-    zoom_level    - Set the zoom level of the map during exploration
-                    (default: 10)
+    shuffle   - Set the maximum number of steps to take before selecting a
+                random exit stub to explore (default: 100)
+    zoom      - Set the zoom level of the map during exploration
+                (default: 10)
 ]]
 
 if command == "start" then
@@ -23,18 +22,14 @@ if command == "start" then
 elseif command == "stop" then
   -- Call function to stop exploration
   Explorer:StopExplore(true)
-  if Mapper.walking then
-    Mapper:ResetWalking()
-  end
 elseif command == "set" then
   if subcommand and value ~= "" then
-    Explorer:SetPreferences(subcommand, tonumber(value))
+    Explorer:SetPreference(subcommand, value)
   else
     -- Show current preference settings
     cecho("Current preferences:\n")
-    cecho("  Speed: " .. Explorer.prefs.speed .. "\n")
-    cecho("  Shuffle Max: " .. Explorer.prefs.shuffle_max .. "\n")
-    cecho("  Zoom Level: " .. Explorer.prefs.zoom_level .. "\n")
+    cecho("  Shuffle: " .. Explorer.prefs.shuffle .. "\n")
+    cecho("  Zoom Level: " .. Explorer.prefs.zoom .. "\n")
   end
 else
   -- Print out the explore instructions

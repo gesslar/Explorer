@@ -1,31 +1,102 @@
-Explorer = Explorer or {}
-
-Explorer.exploring = nil
-Explorer.todo = {}
-Explorer.ignore = {}
-Explorer.stub_map = {
-  [1]  = "north",
-  [2]  = "northeast",
-  [3]  = "northwest",
-  [4]  = "east",
-  [5]  = "west",
-  [6]  = "south",
-  [7]  = "southeast",
-  [8]  = "southwest",
-  [9]  = "up",
-  [10] = "down",
+Explorer = Explorer or {
+  config = {
+    name = "Explore",
+    package_name = "__PKGNAME__",
+    package_path = getMudletHomeDir() .. "/__PKGNAME__/",
+    preferences_file = "Explorer.Preferences.lua",
+  },
+  default = {
+    shuffle = 100,
+    zoom = 10,
+  },
+  prefs = {},
+  stub_map = {
+    north = 1,        northeast = 2,      northwest = 3,      east = 4,
+    west = 5,         south = 6,          southeast = 7,      southwest = 8,
+    up = 9,           down = 10,          ["in"] = 11,        out = 12,
+    northup = 13,     southdown = 14,     southup = 15,       northdown = 16,
+    eastup = 17,      westdown = 18,      westup = 19,        eastdown = 20,
+    [1] = "north",    [2] = "northeast",  [3] = "northwest",  [4] = "east",
+    [5] = "west",     [6] = "south",      [7] = "southeast",  [8] = "southwest",
+    [9] = "up",       [10] = "down",      [11] = "in",        [12] = "out",
+    [13] = "northup", [14] = "southdown", [15] = "southup",   [16] = "northdown",
+    [17] = "eastup",  [18] = "westdown",  [19] = "westup",    [20] = "eastdown",
+  },
+  event_handlers = {
+    "onMoveMap",
+    "sysLoadEvent",
+    "sysSpeedwalkStarted",
+    "sysSpeedwalkFinished",
+    "onSpeedwalkReset",
+    "sysUninstall",
+  },
+  areas = {},
+  exploring = nil,
+  ignore = {},
+  initial = true,
+  previous_area = nil,
+  status = { start = nil, dest = nil, speedwalking = false },
+  step_count = 0,
+  stub_to_check = { room_id = nil, stub = nil },
+  todo = {},
 }
 
-Explorer.speed = 0.1
-Explorer.timer_id = nil
-Explorer.stop = false
-Explorer.areas = {}
-Explorer.previous_area = nil
-Explorer.initial = true
-Explorer.status = { start = nil, dest = nil, speedwalking = false }
-Explorer.check_stub_timers = {}
-Explorer.name = "Explore"
-Explorer.package_name = "__PKGNAME__"
+function Explorer:Setup(event, ...)
+  self:LoadPreferences()
+end
+
+function Explorer:LoadPreferences()
+  local path = self.config.package_path .. self.config.preferences_file
+  local defaults = self.default
+  local prefs = self.prefs
+
+  if io.exists(path) then
+    local prefs = self.default
+    table.load(path, prefs)
+    prefs = table.update(defaults, prefs)
+  end
+
+  self.prefs = prefs
+
+  if not self.prefs.shuffle then
+    self.prefs.shuffle = self.default.shuffle
+  end
+  if not self.prefs.zoom then
+    self.prefs.zoom = self.default.zoom
+  end
+end
+
+function Explorer:SavePreferences()
+  local path = self.config.package_path .. self.config.preferences_file
+  table.save(path, self.prefs)
+end
+
+function Explorer:SetPreference(key, value)
+  if not self.prefs then
+    self.prefs = {}
+  end
+
+  if not self.default[key] then
+    cecho("Unknown preference " .. key .. "\n")
+    return
+  end
+
+  if key == "shuffle" then
+    value = tonumber(value)
+  elseif key == "speed" then
+    value = tonumber(value)
+  elseif key == "zoom" then
+    value = tonumber(value)
+  else
+    cecho("Unknown preference " .. key .. "\n")
+    return
+  end
+
+  self.prefs[key] = value
+  self:SavePreferences()
+  self:LoadPreferences()
+  cecho("Preference " .. key .. " set to " .. value .. ".\n")
+end
 
 function Explorer:FindTodos()
   self.todo = {}
@@ -138,8 +209,7 @@ function Explorer:StopExplore(canceled)
   self.exploring = false
   self.todo = {}
   self.ignore = {}
-  self.status = nil
-  self.check_stub_timers = {}
+  self.status = { dest = nil, start = nil, stub = nil, speedwalking = false }
   self.initial = nil
   self.previous_area = nil
   if canceled then
@@ -148,7 +218,6 @@ function Explorer:StopExplore(canceled)
     cecho("\n<green>Exploration stopped.\n")
   end
   self.areas = {}
-  self.timer_id = nil
 end
 
 function Explorer:Explore()
@@ -199,34 +268,52 @@ function Explorer:DetermineNextRoom()
     return
   end
 
-  local stubs = self:GetValidStubs(current_room_id) or {}
-  local stub_str = next(stubs)
-
-  local next_room_str = nil
+  local valid_stubs = self:GetValidStubs(current_room_id) or {}
+  local stubs = table.keys(valid_stubs) or {}
   local current_room_area = getRoomArea(current_room_id)
-  if self.previous_area == current_room_area and stub_str then -- we have unexplored stubs in our current room
-    local direction = self:GetDirection(stub_str)
+
+  if self.previous_area == current_room_area and #stubs > 0 then -- we have unexplored stubs in our current room
+    local stub
+
+    if self.prefs.shuffle > 0 then
+      self.step_count = self.step_count + 1
+      if self.step_count > self.prefs.shuffle then
+        if #stubs > 1 then
+          local random_index = math.random(2, #stubs)
+          stub = tonumber(stubs[random_index])
+        else
+          stub = tonumber(stubs[1])
+        end
+        self.step_count = 0
+      else
+        stub = tonumber(stubs[1])
+      end
+    else
+      stub = tonumber(stubs[1])
+    end
+
+    local direction = self.stub_map[stub]
     if not direction then
-      cecho("<red>Could not get direction for stub " .. stub_str .. "\n")
+      cecho("<red>Could not get direction for stub " .. stub .. "\n")
       self:StopExplore(true)
       return
     end
     self.status = {
       dest = nil,
       start = current_room_id,
-      stub = stub_str,
+      stub = stub,
       speedwalking = false,
     }
 
-    cecho("\n<yellow>Exploring the " ..
-      direction .. " exit from " .. current_room_id .. " (" .. getRoomName(current_room_id) .. ")\n")
+    cecho("\n<yellow>Exploring the " .. direction .. " exit from " .. current_room_id .. " (" .. getRoomName(current_room_id) .. ")\n")
 
+    self.stub_to_check = { room_id = current_room_id, stub = stub }
     send(direction, true)
-    table.insert(self.check_stub_timers, {
-      id = tempTimer(0.40, function() self:CheckStub(current_room_id, tonumber(stub_str)) end),
-      room_id = current_room_id,
-      stub = stub_str,
-    })
+    if table.index_of(getNamedTimers(self.config.name)) then
+      resumeNamedTimer(self.config.name, "Check Stub")
+    else
+      registerNamedTimer(self.config.name, "Check Stub", 1, function() self:CheckStub(true) end)
+    end
   else
     next_room_str = self:FindCandidateRoom()
     if not next_room_str then
@@ -245,73 +332,37 @@ function Explorer:DetermineNextRoom()
   end
 end
 
-function Explorer:CheckStub(room_id, stub)
-  if not room_id or not stub then
+function Explorer:CheckStub(force_next_room)
+  if not self.stub_to_check then
     return true
   end
 
-  local check_room = tonumber(room_id)
-  local check_stub = tonumber(stub)
-  local check_stubs = getExitStubs1(check_room) or {}
+  local room_id, stub = self.stub_to_check.room_id, self.stub_to_check.stub
+
+  local check_stubs = getExitStubs1(room_id) or {}
   if not next(check_stubs) then
     return true
   end
 
-  self:RemoveCheckStubTimer(check_room, check_stub) -- Remove the timer for this stub
+  local result = true
+  self.stub_to_check = { room_id = nil, stub = nil }
+  if table.index_of(getNamedTimers(self.config.name), "Check Stub") then
+    stopNamedTimer(self.config.name, "Check Stub")
+  end
+
   for _, v in ipairs(check_stubs) do
-    if v == check_stub then
-      self:IgnoreStub(check_room, check_stub)
-      self:DetermineNextRoom()
-      return false
+    if v == stub then
+      self:IgnoreStub(room_id, stub)
+      result = false
+      break
     end
   end
 
-  return true
-end
-
-function Explorer:FindCheckStubTimer(room_id, stub)
-  for index, timer in ipairs(self.check_stub_timers) do
-    if timer.room_id == room_id and timer.stub == stub then
-      return index
-    end
-  end
-  return nil
-end
-
-function Explorer:RemoveCheckStubTimer(room_id, stub)
-  local index = self:FindCheckStubTimer(room_id, stub)
-  if index then
-    if exists(self.check_stub_timers[index].id, "timer") then
-      killTimer(self.check_stub_timers[index].id)
-    end
-    table.remove(self.check_stub_timers, index)
-  end
-end
-
-function Explorer:GetNextStub(room_id)
-  local valid_stubs = self:GetValidStubs(room_id) or {}
-  local stub, _ = next(valid_stubs)
-  if stub then
-    return tonumber(stub)
-  end
-  return nil
-end
-
-function Explorer:Remaining()
-  local total = 0
-
-  for _, _ in pairs(self.todo) do
-    total = total + 1
+  if force_next_room == true then
+    self:DetermineNextRoom()
   end
 
-  return total
-end
-
-function Explorer:Sleep(s)
-  local t = os.clock()
-  while (os.clock() - t < s) do
-    -- Busy wait
-  end
+  return result
 end
 
 function Explorer:FindCandidateRoom()
@@ -343,44 +394,29 @@ function Explorer:FindCandidateRoom()
   return cheapest_path.room_id
 end
 
-function Explorer:Arrived(event, current_room_id, previous_room_id)
-  if not self.exploring then
-    return
-  end
+function Explorer:Arrived(event, current_room_id)
+  if not self.exploring then return end
 
-  if self.status.speedwalking then
-    if event == "mapper_gmcp_received" then
+  if event == "onMoveMap" then
+    if self.status.speedwalking then
       return
     end
-  end
-
-  -- We were speedwalking, but we've arrived at our destination
-  if event == "mapper_speedwalk_complete" then
+  elseif event == "sysSpeedwalkFinished" then
+    if not self.status.speedwalking then
+      return
+    end
     self.status.speedwalking = false
     self:DetermineNextRoom()
     return
   end
 
-  -- If we're speedwalking, we don't need to do anything
-  if self.status.speedwalking then
-    return
-  end
-
-  -- If we're not speedwalking, we need to check if the stub is still validhome
-  if self:CheckStub(self.status.start, tonumber(self.status.stub)) == false then
-    return
-  end
-
-  local current_room_id = getPlayerRoom()
-  if not current_room_id then
-    cecho("<red>Arrived: Could not get current room.\n")
-    self:StopExplore(true)
+  if self:CheckStub(false) == false then
     return
   end
 
   local area_id = getRoomArea(current_room_id)
   if area_id then
-    -- setMapZoom(19)
+    setMapZoom(self.prefs.zoom)
   end
 
   if area_id ~= self.previous_area then
@@ -396,16 +432,6 @@ function Explorer:Arrived(event, current_room_id, previous_room_id)
   end
 
   self:DetermineNextRoom()
-end
-
-function Explorer:GetDirection(stub)
-  local stub_num = tonumber(stub)
-  for k, v in pairs(Mapper.stubs) do
-    if k == stub_num then
-      return v
-    end
-  end
-  return nil
 end
 
 function Explorer:AddRoom(room_id)
@@ -435,11 +461,6 @@ end
 function Explorer:IgnoreStub(room_id, stub)
   local rid = tostring(room_id)
   local sid = tostring(stub)
-
-  if sid == "0" then
-    killTimer(self.timer_id)
-    return
-  end
 
   if not self.ignore then
     self.ignore = {}
@@ -498,6 +519,10 @@ function Explorer:Reset(event, exception, reason)
   end
 end
 
+function Explorer:SpeedwalkStarted(event)
+  cecho("\n<yellow>Speedwalking started.\n")
+end
+
 -- Uninstall the exploration
 function Explorer:Uninstall(event, package)
   if package ~= self.package_name then
@@ -505,10 +530,40 @@ function Explorer:Uninstall(event, package)
   end
 
   self:StopExplore(false)
-  self = nil
+  Explorer = nil
 end
 
-registerNamedEventHandler(Explorer.name, "Explore Arrived", "mapper_speedwalk_complete", "Explorer:Arrived");
-registerNamedEventHandler(Explorer.name, "Explore Moved", "mapper_gmcp_received", "Explorer:Arrived");
-registerNamedEventHandler(Explorer.name, "Explore Reset", "mapper_speedwalk_reset", "Explorer:Reset");
-registerNamedEventHandler(Explorer.name, "sysUninstall", "sysUninstall", "Explorer:Uninstall");
+function Explorer:EventHandler(event, ...)
+  if event == "sysLoadEvent" then
+    self:Setup(event, ...)
+  elseif event == "onMoveMap" then
+    self:Arrived(event, ...)
+  elseif event == "sysSpeedwalkStarted" then
+    self:SpeedwalkStarted(event, ...)
+  elseif event == "sysSpeedwalkFinished" then
+    self:Arrived(event, ...)
+  elseif event == "onSpeedwalkReset" then
+    self:Reset(event, ...)
+  elseif event == "sysUninstall" then
+    self:Uninstall(event, ...)
+  end
+end
+
+function Explorer:SetupEventHandlers()
+  -- Registered event handlers
+  local registered_handlers = getNamedEventHandlers(self.config.name) or {}
+  -- Register persistent event handlers
+  for _, event in ipairs(self.event_handlers) do
+    local handler = self.config.name .. "." .. event
+    if not registered_handlers[handler] then
+      local result, err = registerNamedEventHandler(self.config.name, handler, event,
+      function(...) self:EventHandler(...) end)
+      if not result then
+        cecho("<orange_red>Failed to register event handler for " .. event .. "\n")
+      end
+    end
+  end
+end
+
+registerNamedEventHandler(Explorer.config.name, "Package Installed", "sysInstall", "Explorer:Setup", true)
+Explorer:SetupEventHandlers()
