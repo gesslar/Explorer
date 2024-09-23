@@ -1,9 +1,9 @@
-Explore = Explore or {}
+Explorer = Explorer or {}
 
-Explore.exploring = nil
-Explore.todo = {}
-Explore.ignore = {}
-Explore.stub_map = {
+Explorer.exploring = nil
+Explorer.todo = {}
+Explorer.ignore = {}
+Explorer.stub_map = {
   [1]  = "north",
   [2]  = "northeast",
   [3]  = "northwest",
@@ -16,18 +16,18 @@ Explore.stub_map = {
   [10] = "down",
 }
 
-Explore.speed = 0.1
-Explore.timer_id = nil
-Explore.stop = false
-Explore.areas = {}
-Explore.previous_area = nil
-Explore.initial = true
-Explore.status = { start = nil, dest = nil, speedwalking = false }
-Explore.check_stub_timers = {}
-Explore.name = "Explore"
-Explore.package_name = "__PKGNAME__"
+Explorer.speed = 0.1
+Explorer.timer_id = nil
+Explorer.stop = false
+Explorer.areas = {}
+Explorer.previous_area = nil
+Explorer.initial = true
+Explorer.status = { start = nil, dest = nil, speedwalking = false }
+Explorer.check_stub_timers = {}
+Explorer.name = "Explore"
+Explorer.package_name = "__PKGNAME__"
 
-function Explore:FindTodos()
+function Explorer:FindTodos()
   self.todo = {}
 
   local current_room = getPlayerRoom()
@@ -95,7 +95,7 @@ function Explore:FindTodos()
 end
 
 -- Filters out rooms from the previous area and marks areas as completed if no rooms remain
-function Explore:FilterRoomsByArea(current_area)
+function Explorer:FilterRoomsByArea(current_area)
   for room_id in pairs(self.todo) do
     local room_area = getRoomArea(room_id)
     if room_area ~= current_area then
@@ -105,7 +105,7 @@ function Explore:FilterRoomsByArea(current_area)
 end
 
 -- Count the number of areas still valid for exploration
-function Explore:CountValidAreas()
+function Explorer:CountValidAreas()
   local count = 0
   for area_id, status in pairs(self.areas) do
     if status == true then
@@ -115,7 +115,7 @@ function Explore:CountValidAreas()
   return count
 end
 
-function Explore:SortAreasById()
+function Explorer:SortAreasById()
   local sorted_areas = {}
   for area_id, _ in pairs(self.areas) do
     table.insert(sorted_areas, area_id)
@@ -125,7 +125,7 @@ function Explore:SortAreasById()
 end
 
 -- Find the next valid area with rooms to explore
-function Explore:FindNextValidArea()
+function Explorer:FindNextValidArea()
   for _, area_id in ipairs(self:SortAreasById()) do
     if self.areas[area_id] == true then
       return area_id
@@ -134,7 +134,7 @@ function Explore:FindNextValidArea()
   return nil -- No more areas to explore
 end
 
-function Explore:StopExplore(canceled)
+function Explorer:StopExplore(canceled)
   self.exploring = false
   self.todo = {}
   self.ignore = {}
@@ -151,7 +151,7 @@ function Explore:StopExplore(canceled)
   self.timer_id = nil
 end
 
-function Explore:Explore()
+function Explorer:Explore()
   if self.exploring then
     echo("Already exploring. Returning.\n")
     return
@@ -166,7 +166,7 @@ function Explore:Explore()
   self:DetermineNextRoom()
 end
 
-function Explore:DetermineNextRoom()
+function Explorer:DetermineNextRoom()
   if (self.status and self.status.speedwalking) or not self.exploring then
     return
   end
@@ -245,7 +245,7 @@ function Explore:DetermineNextRoom()
   end
 end
 
-function Explore:CheckStub(room_id, stub)
+function Explorer:CheckStub(room_id, stub)
   if not room_id or not stub then
     return true
   end
@@ -269,7 +269,7 @@ function Explore:CheckStub(room_id, stub)
   return true
 end
 
-function Explore:FindCheckStubTimer(room_id, stub)
+function Explorer:FindCheckStubTimer(room_id, stub)
   for index, timer in ipairs(self.check_stub_timers) do
     if timer.room_id == room_id and timer.stub == stub then
       return index
@@ -278,7 +278,7 @@ function Explore:FindCheckStubTimer(room_id, stub)
   return nil
 end
 
-function Explore:RemoveCheckStubTimer(room_id, stub)
+function Explorer:RemoveCheckStubTimer(room_id, stub)
   local index = self:FindCheckStubTimer(room_id, stub)
   if index then
     if exists(self.check_stub_timers[index].id, "timer") then
@@ -288,7 +288,7 @@ function Explore:RemoveCheckStubTimer(room_id, stub)
   end
 end
 
-function Explore:GetNextStub(room_id)
+function Explorer:GetNextStub(room_id)
   local valid_stubs = self:GetValidStubs(room_id) or {}
   local stub, _ = next(valid_stubs)
   if stub then
@@ -297,7 +297,7 @@ function Explore:GetNextStub(room_id)
   return nil
 end
 
-function Explore:Remaining()
+function Explorer:Remaining()
   local total = 0
 
   for _, _ in pairs(self.todo) do
@@ -307,14 +307,14 @@ function Explore:Remaining()
   return total
 end
 
-function Explore:Sleep(s)
+function Explorer:Sleep(s)
   local t = os.clock()
   while (os.clock() - t < s) do
     -- Busy wait
   end
 end
 
-function Explore:FindCandidateRoom()
+function Explorer:FindCandidateRoom()
   local valid_stubs
   local cheapest_path = { cost = 99999999, room_id = nil }
 
@@ -343,7 +343,7 @@ function Explore:FindCandidateRoom()
   return cheapest_path.room_id
 end
 
-function Explore:Arrived(event, current_room_id, previous_room_id)
+function Explorer:Arrived(event, current_room_id, previous_room_id)
   if not self.exploring then
     return
   end
@@ -398,7 +398,7 @@ function Explore:Arrived(event, current_room_id, previous_room_id)
   self:DetermineNextRoom()
 end
 
-function Explore:GetDirection(stub)
+function Explorer:GetDirection(stub)
   local stub_num = tonumber(stub)
   for k, v in pairs(Mapper.stubs) do
     if k == stub_num then
@@ -408,7 +408,7 @@ function Explore:GetDirection(stub)
   return nil
 end
 
-function Explore:AddRoom(room_id)
+function Explorer:AddRoom(room_id)
   if not self.todo then
     self.todo = {}
   end
@@ -418,7 +418,7 @@ function Explore:AddRoom(room_id)
   end
 end
 
-function Explore:RemoveRoom(room_id)
+function Explorer:RemoveRoom(room_id)
   if not self.todo then
     return false
   end
@@ -432,7 +432,7 @@ function Explore:RemoveRoom(room_id)
   return true
 end
 
-function Explore:IgnoreStub(room_id, stub)
+function Explorer:IgnoreStub(room_id, stub)
   local rid = tostring(room_id)
   local sid = tostring(stub)
 
@@ -452,7 +452,7 @@ function Explore:IgnoreStub(room_id, stub)
   self.ignore[rid][sid] = true
 end
 
-function Explore:GetValidStubs(room_id)
+function Explorer:GetValidStubs(room_id)
   local stubs = getExitStubs1(room_id) or {}
 
   if not next(stubs) then
@@ -479,7 +479,7 @@ function Explore:GetValidStubs(room_id)
   return valid_stubs
 end
 
-function Explore:CountValidStubs(room_id)
+function Explorer:CountValidStubs(room_id)
   local stubs = self:GetValidStubs(room_id) or {}
   local count = 0
   for _, _ in pairs(stubs) do
@@ -488,7 +488,7 @@ function Explore:CountValidStubs(room_id)
   return count
 end
 
-function Explore:Reset(event, exception, reason)
+function Explorer:Reset(event, exception, reason)
   if not self.exploring then
     return
   end
@@ -499,7 +499,7 @@ function Explore:Reset(event, exception, reason)
 end
 
 -- Uninstall the exploration
-function Explore:Uninstall(event, package)
+function Explorer:Uninstall(event, package)
   if package ~= self.package_name then
     return
   end
@@ -508,7 +508,7 @@ function Explore:Uninstall(event, package)
   self = nil
 end
 
-registerNamedEventHandler(Explore.name, "Explore Arrived", "mapper_speedwalk_complete", "Explore:Arrived");
-registerNamedEventHandler(Explore.name, "Explore Moved", "mapper_gmcp_received", "Explore:Arrived");
-registerNamedEventHandler(Explore.name, "Explore Reset", "mapper_speedwalk_reset", "Explore:Reset");
-registerNamedEventHandler(Explore.name, "sysUninstall", "sysUninstall", "Explore:Uninstall");
+registerNamedEventHandler(Explorer.name, "Explore Arrived", "mapper_speedwalk_complete", "Explorer:Arrived");
+registerNamedEventHandler(Explorer.name, "Explore Moved", "mapper_gmcp_received", "Explorer:Arrived");
+registerNamedEventHandler(Explorer.name, "Explore Reset", "mapper_speedwalk_reset", "Explorer:Reset");
+registerNamedEventHandler(Explorer.name, "sysUninstall", "sysUninstall", "Explorer:Uninstall");

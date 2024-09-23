@@ -19,22 +19,22 @@ Syntax: explore [command]
 
 if command == "start" then
   -- Call function to start exploration
-  Explore:Explore()
+  Explorer:Explore()
 elseif command == "stop" then
   -- Call function to stop exploration
-  Explore:StopExplore(true)
+  Explorer:StopExplore(true)
   if Mapper.walking then
     Mapper:ResetWalking()
   end
 elseif command == "set" then
   if subcommand and value ~= "" then
-    Explore:SetPreferences(subcommand, tonumber(value))
+    Explorer:SetPreferences(subcommand, tonumber(value))
   else
     -- Show current preference settings
     cecho("Current preferences:\n")
-    cecho("  Speed: " .. Explore.prefs.speed .. "\n")
-    cecho("  Shuffle Max: " .. Explore.prefs.shuffle_max .. "\n")
-    cecho("  Zoom Level: " .. Explore.prefs.zoom_level .. "\n")
+    cecho("  Speed: " .. Explorer.prefs.speed .. "\n")
+    cecho("  Shuffle Max: " .. Explorer.prefs.shuffle_max .. "\n")
+    cecho("  Zoom Level: " .. Explorer.prefs.zoom_level .. "\n")
   end
 else
   -- Print out the explore instructions

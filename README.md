@@ -1,4 +1,4 @@
-# Explore
+# Explorer
 Developer's Automapping tool for Mudlet
 
 ## Description
@@ -20,7 +20,7 @@ In Mudlet, type `explore` to see the help information for this package.
   Available preferences:
   * `speed` - Set the speed of exploration in seconds per step (default: 0.0)
   * `shuffle_max` - Set the maximum number of steps to take before selecting a
-     random exit stub to explore (default: 100). If set to 0, Explore will not
+     random exit stub to explore (default: 100). If set to 0, Explorer will not
      shuffle.
   * `zoom_level` - Set the zoom level of the map during exploration (default:
     10)
@@ -33,7 +33,7 @@ need to ensure that these events are passed along with the required arguments
 
 ### `onMoveMap`
 
-Trigger this event when the player has moved to a new room. Explore sets a
+Trigger this event when the player has moved to a new room. Explorer sets a
 timer to check if the player has moved to a new room. When this event is
 triggered, it confirms that the player has moved to a new room and will then
 proceed to explore a new room.
