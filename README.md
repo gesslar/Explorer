@@ -20,7 +20,7 @@ In Mudlet, type `explore` to see the help information for this package.
 
   Available preferences:
   * `shuffle` - Set the maximum number of steps to take before selecting a
-     random exit stub to explore (default: 100). If set to 0, Explorer will not
+     random exit stub to explore (default: 0). If set to 0, Explorer will not
      shuffle.
   * `zoom` - Set the zoom level of the map during exploration (default:
     10)

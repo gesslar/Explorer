@@ -2,7 +2,7 @@
   "package": "Explorer",
   "title": "Developer's Automapping tool for Mudlet",
   "description": "Developer's Automapping tool for Mudlet",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "author": "gesslar",
   "icon": "compass.png",
   "dependencies": "",

@@ -11,7 +11,7 @@ Syntax: explore [command]
 
   Available preferences:
     shuffle   - Set the maximum number of steps to take before selecting a
-                random exit stub to explore (default: 100)
+                random exit stub to explore (default: 0)
     zoom      - Set the zoom level of the map during exploration
                 (default: 10)
 ]]

@@ -6,7 +6,7 @@ Explorer = Explorer or {
     preferences_file = "Explorer.Preferences.lua",
   },
   default = {
-    shuffle = 100,
+    shuffle = 0,
     zoom = 10,
   },
   prefs = {},
