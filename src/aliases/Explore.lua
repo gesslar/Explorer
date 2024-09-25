@@ -1,20 +1,7 @@
 local input = matches[2]:trim()
 local command, subcommand, value = input:match("^(%S+)%s*(%S*)%s*(.*)$")
 
-local help = [[
-Syntax: explore [command]
-
-  explore start - Start exploring
-  explore stop - Stop exploring
-  explore set - See your current preference settings
-  explore set <preference> <value> - Set a preference to a value
-
-  Available preferences:
-    shuffle   - Set the maximum number of steps to take before selecting a
-                random exit stub to explore (default: 0)
-    zoom      - Set the zoom level of the map during exploration
-                (default: 10)
-]]
+local help = Explorer.help.topics.usage
 
 if command == "start" then
   -- Call function to start exploration
@@ -33,5 +20,5 @@ elseif command == "set" then
   end
 else
   -- Print out the explore instructions
-  cecho(help)
+  helper.print({text = help, styles = Explorer.my_styles})
 end

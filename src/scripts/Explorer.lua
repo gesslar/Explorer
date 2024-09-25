@@ -42,7 +42,26 @@ Explorer = Explorer or {
 }
 
 function Explorer:Setup(event, ...)
+  if not table.index_of(getPackages(), "Helper") then
+    cecho("<gold><b>Explorer is installing dependent <b>Helper</b> package.\n")
+    installPackage(
+      "https://github.com/gesslar/Helper/releases/latest/download/Helper.mpackage"
+    )
+  end
+
   self:LoadPreferences()
+
+  if event == "sysInstall" then
+    tempTimer(1, function()
+      echo("\n")
+      cecho("<gold>Welcome to <b>Explorer</b>!<reset>\n")
+      echo("\n")
+      helper.print({
+        text = self.help.topics.usage,
+        styles = self.my_styles
+      })
+    end)
+  end
 end
 
 function Explorer:LoadPreferences()
@@ -132,6 +151,7 @@ function Explorer:FindTodos()
 
   local test_area = self.previous_area
 
+  local count = 0
   -- Keep looking for valid rooms to explore across areas
   while not next(self.todo) and self:CountValidAreas() > 0 do
     -- Get rooms in the current area and find valid ones to explore
@@ -142,6 +162,7 @@ function Explorer:FindTodos()
         local valid_stubs = self:GetValidStubs(room_id) or {}
         if next(valid_stubs) then
           self:AddRoom(room_id)
+          count = count + 1
         end
       end
     end
@@ -567,3 +588,31 @@ end
 
 registerNamedEventHandler(Explorer.config.name, "Package Installed", "sysInstall", "Explorer:Setup", true)
 Explorer:SetupEventHandlers()
+
+-- ----------------------------------------------------------------------------
+-- Help
+-- ----------------------------------------------------------------------------
+
+Explorer.my_styles = {
+  h1 = "gold",
+}
+
+Explorer.help = {
+  name = "Explorer",
+  topics = {
+    usage = [[
+<h1><u>Usage</u></h1>
+
+  <b>explore</b> - See this help text.
+  <b>explore start</b> - Start exploring
+  <b>explore set</b> - See your current preference settings.
+  <b>explore set</b> <<b>preference</b>> <<b>value</b>> - Set a preference to a value.
+
+  Available preferences:
+    <b>shuffle</b>   - Set the maximum number of steps to take before selecting a
+                random exit stub to explore (default: 0).
+    <b>zoom</b>      - Set the zoom level of the map during exploration
+                (default: 10).
+]],
+  }
+}
