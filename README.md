@@ -42,15 +42,6 @@ proceed to explore a new room.
 
 * `current room id` - The id of the room the player has arrived in.
 
-### `sysSpeedwalkStarted`
-
-*(Presently not used)*
-
-Trigger this event to indicate that the speedwalk has started.
-
-#### Arguments
-
-None
 ### `sysSpeedwalkFinished`
 
 Trigger this event when the speedwalk system has finished. The package listens
@@ -60,6 +51,18 @@ now schedule other activities.
 #### Arguments
 
 None
+
+## Support
+
+While there is no official support and this is a hobby project, you are welcome
+to report issues on the [GitHub repo](https://github.com/gesslar/Explorer).
+
+## Dependencies
+
+The following packages are required and will be automatically installed if they
+are missing:
+
+* [Helper](https://github.com/gesslar/Helper)
 
 ## Credits
 

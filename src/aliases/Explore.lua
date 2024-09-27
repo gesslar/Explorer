@@ -14,11 +14,11 @@ elseif command == "set" then
     Explorer:SetPreference(subcommand, value)
   else
     -- Show current preference settings
-    cecho("Current preferences:\n")
-    cecho("  Shuffle: " .. Explorer.prefs.shuffle .. "\n")
-    cecho("  Zoom Level: " .. Explorer.prefs.zoom .. "\n")
+    echo(f[[Current {Explorer.config.name} preferences:]] .. "\n\n")
+    echo(f[[  Shuffle interval: {Explorer.prefs.shuffle}]] .. "\n")
+    echo(f[[  Zoom level: {Explorer.prefs.zoom}]] .. "\n")
   end
 else
   -- Print out the explore instructions
-  helper.print({text = help, styles = Explorer.my_styles})
+  helper.print({text = help, styles = Explorer.help_styles})
 end

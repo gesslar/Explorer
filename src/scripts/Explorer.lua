@@ -1,9 +1,26 @@
+-- This is the name of this script, which may be different to the package name
+-- which is why we want to have a specific identifier for events that only
+-- concern this script and not the package as a whole, if it is included
+-- in other packages.
+local script_name = "Explorer"
+
+---@class Explorer
+---@field config table
+---@field default table
+---@field prefs table
+---@field stub_map table
+---@field event_handlers string[]
+---@field areas table
+---@field exploring boolean
+---@field ignore table
+---@field initial boolean
+---@field previous_area string
 Explorer = Explorer or {
   config = {
-    name = "Explore",
+    name = script_name,
     package_name = "__PKGNAME__",
     package_path = getMudletHomeDir() .. "/__PKGNAME__/",
-    preferences_file = "Explorer.Preferences.lua",
+    preferences_file = f[[{script_name}.Preferences.lua]],
   },
   default = {
     shuffle = 0,
@@ -23,12 +40,13 @@ Explorer = Explorer or {
     [17] = "eastup",  [18] = "westdown",  [19] = "westup",    [20] = "eastdown",
   },
   event_handlers = {
-    "onMoveMap",
     "sysLoadEvent",
+    "sysUninstall",
+    "sysDisconnectionEvent",
     "sysSpeedwalkStarted",
     "sysSpeedwalkFinished",
     "onSpeedwalkReset",
-    "sysUninstall",
+    "onMoveMap",
   },
   areas = {},
   exploring = nil,
@@ -41,9 +59,13 @@ Explorer = Explorer or {
   todo = {},
 }
 
-function Explorer:Setup(event, ...)
+function Explorer:Setup(event, package, ...)
+  if package and package ~= self.config.package_name then
+    return
+  end
+
   if not table.index_of(getPackages(), "Helper") then
-    cecho("<gold><b>Explorer is installing dependent <b>Helper</b> package.\n")
+    cecho(f "<gold><b>{self.config.name} is installing dependent <b>Helper</b> package.\n")
     installPackage(
       "https://github.com/gesslar/Helper/releases/latest/download/Helper.mpackage"
     )
@@ -54,11 +76,11 @@ function Explorer:Setup(event, ...)
   if event == "sysInstall" then
     tempTimer(1, function()
       echo("\n")
-      cecho("<gold>Welcome to <b>Explorer</b>!<reset>\n")
+      cecho("<gold>Welcome to <b>"..self.config.name.."</b>!<reset>\n")
       echo("\n")
       helper.print({
         text = self.help.topics.usage,
-        styles = self.my_styles
+        styles = self.help_styles
       })
     end)
   end
@@ -67,10 +89,10 @@ end
 function Explorer:LoadPreferences()
   local path = self.config.package_path .. self.config.preferences_file
   local defaults = self.default
-  local prefs = self.prefs
+  local prefs = self.prefs or {}
 
   if io.exists(path) then
-    local prefs = self.default
+    prefs = self.default
     table.load(path, prefs)
     prefs = table.update(defaults, prefs)
   end
@@ -226,22 +248,42 @@ function Explorer:FindNextValidArea()
   return nil -- No more areas to explore
 end
 
-function Explorer:StopExplore(canceled)
+function Explorer:StopExplore(canceled, silent)
+  printDebug("StopExplore called with canceled: " .. tostring(canceled) .. " and silent: " .. tostring(silent), true)
   self.exploring = false
   self.todo = {}
   self.ignore = {}
+
+  local ignore_str
+
+  if next(self.ignore) then
+    ignore_str = "not empty"
+  else
+    ignore_str = "empty"
+  end
+  printDebug("=>> Self.ignore = " .. ignore_str)
+
   self.status = { dest = nil, start = nil, stub = nil, speedwalking = false }
   self.initial = nil
   self.previous_area = nil
-  if canceled then
-    cecho("\n<red>Exploration canceled.\n")
-  else
-    cecho("\n<green>Exploration stopped.\n")
+
+  if not silent then
+    if canceled then
+      cecho("\n<red>Exploration canceled.\n")
+    else
+      cecho("\n<green>Exploration stopped.\n")
+    end
   end
+
   self.areas = {}
 end
 
 function Explorer:Explore()
+  if not mudlet or (mudlet and not mudlet.mapper_script) then
+    cecho("<red>This script requires the Map Script package to be enabled.\n")
+    return
+  end
+
   if self.exploring then
     echo("Already exploring. Returning.\n")
     return
@@ -276,7 +318,7 @@ function Explorer:DetermineNextRoom()
         end
       end
     end
-    self:StopExplore(false)
+    self:StopExplore(false, false)
     return
   end
 
@@ -285,7 +327,7 @@ function Explorer:DetermineNextRoom()
   local current_room_id = getPlayerRoom()
   if not current_room_id then
     cecho("<red>Could not get current room.\n")
-    self:StopExplore(true)
+    self:StopExplore(true, false)
     return
   end
 
@@ -339,7 +381,7 @@ function Explorer:DetermineNextRoom()
     next_room_str = self:FindCandidateRoom()
     if not next_room_str then
       cecho("<red>Could not find next room.\n")
-      self:StopExplore(true)
+      self:StopExplore(true, false)
       return
     end
     self.status = {
@@ -536,7 +578,7 @@ function Explorer:Reset(event, exception, reason)
   end
 
   if exception then
-    self:StopExplore(true)
+    self:StopExplore(true, false)
   end
 end
 
@@ -550,23 +592,56 @@ function Explorer:Uninstall(event, package)
     return
   end
 
-  self:StopExplore(false)
+  self:StopExplore(false, false)
   Explorer = nil
 end
 
+function Explorer:Disconnect(event)
+  -- printDebug("z", true)
+
+  local ignore_str
+
+  if next(self.ignore) then
+    ignore_str = "not empty"
+  else
+    ignore_str = "empty"
+  end
+  printDebug("=>> Self.ignore = " .. ignore_str)
+
+  if self.exploring == true then
+    self:StopExplore(false, false)
+  end
+
+  if next(self.ignore) then
+    ignore_str = "not empty"
+  else
+    ignore_str = "empty"
+  end
+  printDebug("=>>> Self.ignore = " .. ignore_str)
+  printDebug("=>>> Self.ignore printing")
+  for room_id, stubs in pairs(self.ignore) do
+    for stub, _ in pairs(stubs) do
+      printDebug("  Room " .. room_id .. " (" .. getRoomName(room_id) .. ") " ..
+        "-> " .. stub .. " (" .. self.stub_map[tonumber(stub)] .. ")")
+    end
+  end
+end
+
 function Explorer:EventHandler(event, ...)
-  if event == "sysLoadEvent" then
+  if event == "sysLoadEvent" or event == "sysInstall" then
     self:Setup(event, ...)
   elseif event == "onMoveMap" then
     self:Arrived(event, ...)
   elseif event == "sysSpeedwalkStarted" then
-    self:SpeedwalkStarted(event, ...)
+    self:SpeedwalkStarted(event)
   elseif event == "sysSpeedwalkFinished" then
     self:Arrived(event, ...)
   elseif event == "onSpeedwalkReset" then
     self:Reset(event, ...)
   elseif event == "sysUninstall" then
     self:Uninstall(event, ...)
+  elseif event == "sysDisconnectionEvent" then
+    self:Disconnect(event)
   end
 end
 
@@ -586,33 +661,37 @@ function Explorer:SetupEventHandlers()
   end
 end
 
-registerNamedEventHandler(Explorer.config.name, "Package Installed", "sysInstall", "Explorer:Setup", true)
+registerNamedEventHandler(script_name, "Profile Loaded", "sysLoadEvent", "Explorer:Setup", false)
+registerNamedEventHandler(script_name, "Package Installed", "sysInstall", "Explorer:Setup", true)
 Explorer:SetupEventHandlers()
 
 -- ----------------------------------------------------------------------------
 -- Help
 -- ----------------------------------------------------------------------------
 
-Explorer.my_styles = {
+Explorer.help_styles = {
   h1 = "gold",
 }
 
 Explorer.help = {
-  name = "Explorer",
+  name = Explorer.config.name,
   topics = {
-    usage = [[
-<h1><u>Usage</u></h1>
+    usage = f[[
+<h1><u>{Explorer.config.name}</u></h1>
+
+Syntax: <b>explore</b> [<b>command</b>]
 
   <b>explore</b> - See this help text.
-  <b>explore start</b> - Start exploring
+  <b>explore start</b> - Start exploring.
+  <b>explore stop</b> - Stop exploring.
   <b>explore set</b> - See your current preference settings.
   <b>explore set</b> <<b>preference</b>> <<b>value</b>> - Set a preference to a value.
 
   Available preferences:
     <b>shuffle</b>   - Set the maximum number of steps to take before selecting a
-                random exit stub to explore (default: 0).
+                random exit stub to explore (default: <i>{Explorer.default.shuffle}</i>).
     <b>zoom</b>      - Set the zoom level of the map during exploration
-                (default: 10).
+                (default: <i>{Explorer.default.zoom}</i>).
 ]],
   }
 }
