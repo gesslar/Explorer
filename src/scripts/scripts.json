@@ -2,6 +2,12 @@
   {
     "isActive": "yes",
     "isFolder": "no",
+    "name": "List",
+    "script": ""
+  },
+  {
+    "isActive": "yes",
+    "isFolder": "no",
     "name": "Explorer",
     "script": ""
   }
