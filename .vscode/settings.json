@@ -1,4 +1,3 @@
 {
-  "Lua.diagnostics.disable": [
-  ]
+  "Lua.runtime.version": "Lua 5.1",
 }
