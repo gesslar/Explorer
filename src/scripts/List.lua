@@ -53,9 +53,50 @@ function List:isEmpty()
   return self.first > self.last
 end
 
+-- Get the head
+function List:head()
+  return self[self.first]
+end
+
+-- Get the tail
+function List:tail()
+  return self[self.last]
+end
+
+-- Completely wipe out a table, recursively.
+local function clear_table(t)
+  for k in pairs(t) do
+    if type(k) == "table" then
+      clear_table(k)
+    else
+      t[k] = nil
+    end
+  end
+end
+
+-- Clear the list
+function List:clear()
+  clear_table(self)
+  self.first = 0
+  self.last = -1
+end
+
 -- Returns the current size of the list
 function List:size()
   return self.last - self.first + 1
+end
+
+function List:index_of(value)
+  for i = self.first, self.last do
+    if self[i] == value then
+      return i
+    end
+  end
+  return nil
+end
+
+function List:get(index)
+  return self[self.first + index]
 end
 
 -- Iterates over the list in order
