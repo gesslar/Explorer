@@ -1,7 +1,11 @@
 {
-  "scripts": {
-    "build": "muddle",
-    "watch": "muddle -w"
+  "name": "explorer",
+  "author": {
+    "name": "gesslar"
   },
-  "license": "Unlicense"
+  "scripts": {
+    "build": "npx muddle",
+    "watch": "npx muddle -w"
+  },
+  "license": "0BSD"
 }

@@ -3,11 +3,33 @@
 -- concern this script and not the package as a whole, if it is included
 -- in other packages.
 local script_name = "Explorer"
-print("hi there from " .. script_name)
+local package_name = "__PKGNAME__"
 
-local _g = Glu and Glu(script_name) or nil
+-- Bootstrap the bundled Glu engine. This is loaded from the package's own
+-- resource directory, so make sure that directory is searchable by require()
+-- before we ask for it. Doing this defensively means a load failure reports a
+-- clear, single error here instead of cascading into misleading
+-- "attempt to index global 'Explorer'" errors from every alias and handler.
+local _g
+do
+  local home = getMudletHomeDir():gsub("\\", "/")
+  local search = home .. "/?.lua"
+  if not package.path:find(search, 1, true) then
+    package.path = package.path .. ";" .. search
+  end
 
-display(_g)
+  local ok, result = pcall(function()
+    return require(package_name .. "/Glu-single")(package_name)
+  end)
+
+  if not ok or not result then
+    cecho(f "<orange_red>[{script_name}] Failed to load the bundled Glu engine; the package cannot start.\n")
+    cecho(f "<orange_red>[{script_name}] {tostring(result)}\n")
+    return
+  end
+
+  _g = result
+end
 
 ---@class Explorer
 ---@field areas table                 -- A table of areas remaining to be
@@ -72,6 +94,7 @@ Explorer = Explorer or {
   },
   event_handlers = {
     "sysLoadEvent",
+    "sysInstall",
     "sysUninstall",
     "sysDisconnectionEvent",
     "sysSpeedwalkStarted",
@@ -123,11 +146,24 @@ function Explorer:Setup(event, package, ...)
     return
   end
 
-  if not table.index_of(getPackages(), "Helper") then
-    cecho(f "<gold><b>{self.config.name} is installing dependent <b>Helper</b> package.\n")
-    installPackage(
-      "https://github.com/gesslar/Helper/releases/latest/download/Helper.mpackage"
-    )
+  -- Let Glu's dependency queue handle the Helper dependency. It filters out
+  -- already-installed packages, installs the rest in order, and reports back
+  -- through the callback. It returns nothing when there is nothing to install.
+  local dependencies = {
+    {
+      name = "Helper",
+      url = "https://github.com/gesslar/Helper/releases/latest/download/Helper.mpackage",
+    },
+  }
+
+  local queue = self.g.dependency_queue(dependencies, function(success, message)
+    if not success then
+      cecho(f "<orange_red>[{self.config.name}] {message}\n")
+    end
+  end)
+
+  if queue then
+    queue.start()
   end
 
   self:LoadPreferences()
@@ -146,37 +182,17 @@ function Explorer:Setup(event, package, ...)
 end
 
 function Explorer:LoadPreferences()
-  local path = self.config.package_path .. self.config.preferences_file
-  local defaults = self.default
-  local prefs = self.prefs or {}
-
-  if io.exists(path) then
-    prefs = self.default
-    table.load(path, prefs)
-    ---@diagnostic disable-next-line: cast-local-type
-    prefs = table.update(defaults, prefs)
-  end
-
-  ---@diagnostic disable-next-line: assign-type-mismatch
-  self.prefs = prefs
-
-  if not self.prefs.shuffle then
-    self.prefs.shuffle = self.default.shuffle
-  end
-  if not self.prefs.zoom then
-    self.prefs.zoom = self.default.zoom
-  end
-  if not self.prefs.speed then
-    self.prefs.speed = self.default.speed
-  end
-  if not self.prefs.stats then
-    self.prefs.stats = self.default.stats
-  end
+  -- Store prefs at the profile root (nil package) rather than inside the
+  -- package directory, which Mudlet wipes on package reinstall/upgrade.
+  self.prefs = self.g.preferences.load(
+    nil, self.config.preferences_file, self.default
+  )
 end
 
 function Explorer:SavePreferences()
-  local path = self.config.package_path .. self.config.preferences_file
-  table.save(path, self.prefs)
+  self.g.preferences.save(
+    nil, self.config.preferences_file, self.prefs
+  )
 end
 
 function Explorer:SetPreference(key, value)
@@ -190,6 +206,7 @@ function Explorer:SetPreference(key, value)
     value = tonumber(value)
   elseif key == "zoom" then
     value = tonumber(value)
+    if value < 3 then value = 3 end
   elseif key == "speed" then
     value = tonumber(value)
     if value < 0.0 then value = 0.0 end
@@ -324,10 +341,6 @@ function Explorer:Explore()
 
   self.exploring = true
 
-  for n = 1, 10 do
-    d("=========================================================\n", "orange")
-  end
-
   raiseEvent("onExplorationStarted")
 
   self:ScheduleNextMove()
@@ -347,10 +360,6 @@ function Explorer:StopExplore(canceled, silent)
   end
 
   deleteAllNamedTimers(self.config.name)
-  local next_timer = self.next_move_timer
-  if next_timer and exists(next_timer, "timer") then
-    killTimer(next_timer)
-  end
 
   raiseEvent("onExplorationStopped", canceled, silent)
 end
@@ -472,10 +481,6 @@ function Explorer:DetermineNextRoom()
     d("next_room = " .. tostring(next_room))
     if not next_room then
       cecho("<red>Could not find next room.\n")
-      -- cecho("<red>Trying again.\n")
-      -- self.previous_area = nil
-      -- return
-      -- self:DetermineNextRoom()
       self:StopExplore(true, false)
       return
     end
@@ -630,8 +635,8 @@ function Explorer:ScheduleNextMove()
   if not self.exploring then return end
   if self.status.speedwalking == true then return end
 
-  self.prefs.speed = self.prefs.speed ~= 0 and self.prefs.speed or 0.01
-  d(f"Scheduling next move in {self.prefs.speed} seconds")
+  self.prefs.speed = self.prefs.speed ~= 0 and self.prefs.speed or 0.025
+  self.dir_start = getEpoch()
   self:EnableTimer("Determine Next Room", self.prefs.speed, function()
     self:DetermineNextRoom()
   end)
@@ -719,7 +724,7 @@ function Explorer:Arrived(event, current_room_id)
 
   local area_id = getRoomArea(current_room_id)
   if area_id then
-    setMapZoom(self.prefs.zoom)
+    setMapZoom(math.max(3, self.prefs.zoom or self.default.zoom))
     -- setGridMode(area_id, true)
   end
 
@@ -784,6 +789,7 @@ function Explorer:Uninstall(event, package)
     self[k] = nil
   end
 
+---@diagnostic disable-next-line: assign-type-mismatch
   Explorer = nil
 end
 
@@ -840,8 +846,6 @@ function Explorer:SetupEventHandlers()
   end
 end
 
-registerNamedEventHandler(script_name, "Profile Loaded", "sysLoadEvent", "Explorer:Setup", true)
-registerNamedEventHandler(script_name, "Package Installed", "sysInstall", "Explorer:Setup", true)
 Explorer:SetupEventHandlers()
 
 -- ----------------------------------------------------------------------------
@@ -904,7 +908,9 @@ function Explorer:UpdateLabel()
   for _, timing in ipairs(self.explore_timings) do
     average = average + timing
   end
+
   average = average / #self.explore_timings
+
   local average_string = string.format("%.3f", average)
 
   local text =
@@ -944,13 +950,13 @@ function Explorer:UpdateLabel()
 end
 
 function Explorer:ExploreDirection(current_room_id, start_room_id, stub)
-  self.dir_start = getEpoch()
+  -- self.dir_start = getEpoch()
 end
 
 function Explorer:DirectionExplored(current_room_id, start_room_id, stub)
   local duration = getEpoch() - self.dir_start
-  self.explore_timings[#self.explore_timings+1] = duration
 
+  self.explore_timings[#self.explore_timings + 1] = duration
   self.exits_explored = self.exits_explored and self.exits_explored + 1 or 1
   self:UpdateLabel()
 end

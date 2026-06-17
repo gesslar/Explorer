@@ -8,15 +8,20 @@ if command == "start" then
   Explorer:Explore()
 elseif command == "stop" then
   -- Call function to stop exploration
-  Explorer:StopExplore(true)
+  Explorer:StopExplore(true, false)
+elseif command == "debug" then
+  Explorer.debug = not Explorer.debug
+  cecho("<gold>Debug mode " .. (Explorer.debug and "enabled" or "disabled") .. ".\n")
 elseif command == "set" then
   if subcommand and value ~= "" then
     Explorer:SetPreference(subcommand, value)
   else
     -- Show current preference settings
-    echo(f[[Current {Explorer.config.name} preferences:]] .. "\n\n")
-    echo(f[[  Shuffle interval: {Explorer.prefs.shuffle}]] .. "\n")
-    echo(f[[  Zoom level: {Explorer.prefs.zoom}]] .. "\n")
+    echo(f [[Current {Explorer.config.name} preferences:]] .. "\n\n")
+    echo(f [[  Shuffle interval: {Explorer.prefs.shuffle}]] .. "\n")
+    echo(f [[  Zoom level: {Explorer.prefs.zoom}]] .. "\n")
+    echo(f [[  Movement speed: {Explorer.prefs.speed}]] .. "\n")
+    echo(f [[  Show stats: {tostring(Explorer.prefs.stats)}]] .. "\n")
   end
 else
   -- Print out the explore instructions
