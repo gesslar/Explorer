@@ -202,10 +202,9 @@ function Explorer:SetPreference(key, value)
 
   if key == "shuffle" then
     value = tonumber(value)
-  elseif key == "speed" then
-    value = tonumber(value)
   elseif key == "zoom" then
     value = tonumber(value)
+    if not value then return end
     if value < 3 then value = 3 end
   elseif key == "speed" then
     value = tonumber(value)
