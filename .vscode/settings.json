@@ -1,3 +1,6 @@
 {
   "Lua.runtime.version": "Lua 5.1",
+  "Lua.workspace.library": [
+    "/home/gesslar/.config/Code/User/globalStorage/delwing.mudlet-scripts-sdk\\docs"
+  ],
 }

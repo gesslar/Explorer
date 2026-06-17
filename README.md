@@ -137,6 +137,10 @@ are missing:
 While there is no official support and this is a hobby project, you are welcome
 to report issues on the [GitHub repo](https://github.com/gesslar/Explorer).
 
+## License
+
+`explorer` is released under the [0BSD](LICENSE.txt).
+
 ## Credits
 
 [Compass icons created by Dimitry Miroliubov - Flaticon](https://www.flaticon.com/free-icons/compass)
