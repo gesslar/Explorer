@@ -3,3 +3,4 @@
 build/
 .output
 .vscode/
+node_modules/
