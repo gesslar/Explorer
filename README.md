@@ -48,7 +48,9 @@ proceed to explore a new room.
 
 Trigger this event when the speedwalk system has finished. The package listens
 for this event to understand that speedwalking has completed and that it can
-now schedule other activities.
+now schedule other activities. Raise it once the player has arrived, not when
+the last command is sent. If the player is not in the destination room by then,
+or no room change arrives in time during the walk, exploration stops.
 
 ##### Arguments
 

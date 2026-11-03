@@ -19,7 +19,7 @@ do
   end
 
   local ok, result = pcall(function()
-    return require(package_name .. "/Glu-single")(package_name)
+    return require("__PKGNAME__/vendor/Glu-single")(package_name)
   end)
 
   if not ok or not result then
@@ -86,11 +86,12 @@ Explorer = Explorer or {
     n = "north",      ne = "northeast", nw = "northwest", e = "east",
     w = "west",       s = "south",      se = "southeast", sw = "southwest",
     u = "up",         d = "down",       ["in"] = "in",    out = "out",
+    up = "up",        down = "down",
   },
   exit_short = {
     north = "n",    northeast = "ne", northwest = "nw", east = "e",
     west = "w",     south = "s",      southeast = "se", southwest = "sw",
-    up = "d",       down = "u",       ["in"] = "out",   out = "in",
+    up = "up",      down = "down",    ["in"] = "in",    out = "out",
   },
   event_handlers = {
     "sysLoadEvent",
@@ -158,7 +159,9 @@ function Explorer:Setup(event, package, ...)
 
   local queue = self.g.dependency_queue(dependencies, function(success, message)
     if not success then
-      cecho(f "<orange_red>[{self.config.name}] {message}\n")
+      -- f reads locals on the stack, and this runs after the method has returned.
+      local name = self.config.name
+      cecho(f "<orange_red>[{name}] {message}\n")
     end
   end)
 
@@ -343,6 +346,8 @@ function Explorer:Explore()
 
   self.exploring = true
 
+  cecho("\n<green>Exploration started.\n")
+
   raiseEvent("onExplorationStarted")
 
   self:ScheduleNextMove()
@@ -459,14 +464,11 @@ function Explorer:DetermineNextRoom()
     -- If this is the initial move, then we don't need to check for stubs.
     -- since we haven't moved yet.
     --if self.initial == false then
-      -- We need to schedule a check for the stub we moved through to see
-      -- if it is still a stub. This is how we know if we were blocked from
-      -- moving through it, since the mapping script should have converted
-      -- to an exit in that case.
-      -- But we don't do this on the first room, because it's not a movement
-      -- and we didn't go through any exit so we don't need to check.
-      d(f"Checking stub in 1 second")
-      self:EnableTimer("Check Stub", 1, function() self:CheckStub(true) end)
+      -- We sent a direction, so we need to arrive before this timer fires.
+      -- Arrived cancels it through CheckStub. If it does fire, we didn't get
+      -- there and exploration stops.
+      d(f"Expecting arrival within 1 second")
+      self:EnableTimer("Check Stub", 1, function() self:MoveTimedOut() end)
     --end
 
     ---@diagnostic disable-next-line: redundant-parameter
@@ -498,19 +500,87 @@ function Explorer:DetermineNextRoom()
 
     cecho(f"<yellow>Traveling to room {next_room} from {current_room}\n")
     tempTimer(self.prefs.speed, function()
+      local from_room = getPlayerRoom()
+      self.status.route = self:GetRoute(from_room, next_room)
+      self:ArmSpeedwalkTimeout()
+      self:OpenRouteDoor(from_room)
       gotoRoom(next_room)
     end)
   end
 end
 
--- Check to see if we have moved by looking for the stub in the room that
--- we have left. If it is still a stub, then we have not moved and we
--- should add it to our ignore list so that we don't try to move through
--- it again.
-function Explorer:CheckStub(force_next_room)
+-- Stop exploring because a move did not take us to a new room.
+function Explorer:StopBlocked(room_id, stub)
+  local direction = self.stub_map[tonumber(stub)]
+  cecho(f"<red>Could not move {direction} from room {room_id}. Stopping exploration.\n")
+  self:StopExplore(true, false)
+end
+
+-- Stop exploring because a speedwalk did not take us to its destination.
+function Explorer:StopSpeedwalkFailed()
+  local dest = self.status.dest
+  local room_id = getPlayerRoom()
+  cecho(f"<red>Speedwalk to room {dest} ended in room {room_id}. Stopping exploration.\n")
+  self:StopExplore(true, false)
+end
+
+-- Restart the speedwalk's timer. Carto sends each step after the room update
+-- from the last one, plus its delay, so a blocked step raises no event at all.
+-- Every room change during the walk restarts this.
+function Explorer:ArmSpeedwalkTimeout()
+  local delay = Carto and Carto:GetSpeedwalkDelay() or 0
+
+  deleteNamedTimer(self.config.name, "Speedwalk Timeout")
+  registerNamedTimer(self.config.name, "Speedwalk Timeout", delay + 1, function()
+    if self.status.speedwalking then self:StopSpeedwalkFailed() end
+  end, false)
+end
+
+-- Build a lookup of room id to the direction a speedwalk leaves that room by.
+function Explorer:GetRoute(from_room, to_room)
+  local route = {}
+  if not getPath(from_room, to_room) then return route end
+
+  -- speedWalkDir[i] is the step into speedWalkPath[i].
+  local room_id = from_room
+  for i, dir in ipairs(speedWalkDir) do
+    route[room_id] = dir
+    room_id = tonumber(speedWalkPath[i])
+  end
+
+  return route
+end
+
+-- The mapper doesn't open doors, so open the one on our next step of the
+-- speedwalk. This goes out ahead of the step itself. If it doesn't open, the
+-- step fails and the speedwalk's timer stops exploration.
+function Explorer:OpenRouteDoor(room_id)
+  local dir = self.status.route and self.status.route[room_id]
+  if not dir then return end
+
+  local doors = getDoors(room_id) or {}
+  if not doors[dir] then return end
+
+  local direction = self.exit_expand[dir] or dir
+  d(f"Opening the {direction} door on our route in room {room_id}")
+  send(f"open {direction} door", true)
+end
+
+-- We sent a direction and never arrived.
+function Explorer:MoveTimedOut()
+  local check = self.stub_to_check
+  if not check or not check.stub then return end
+
+  self:StopBlocked(check.room_id, check.stub)
+end
+
+-- Called on arrival. Cancels the arrival timer and looks for the stub in the
+-- room that we have left. If it is still a stub, then the move didn't go where
+-- we sent it, so exploration stops.
+function Explorer:CheckStub()
   if not self.stub_to_check then return true end
 
-  local room_id, stub = unpack(self.g.table.values(self.stub_to_check))
+  local room_id, stub = self.stub_to_check.room_id, self.stub_to_check.stub
   d(f"Checking for stub {stub} ({self.stub_map[tonumber(stub)]}) in room {room_id}")
 
   self:DisableTimer("Check Stub")
@@ -520,23 +590,16 @@ function Explorer:CheckStub(force_next_room)
   local cs = table.concat(check_stubs, ",")
   if table.is_empty(check_stubs) then return true end
 
-  local result = true
   self.stub_to_check = { room_id = nil, stub = nil }
   d(f"Stub for this room {room_id}")
   d(cs)
   if table.index_of(check_stubs, stub) then
-    d(f"Stub {stub} ({self.stub_map[tonumber(stub)]}) is still a stub, removing from todo list")
-    self:IgnoreStub(room_id, stub)
-    result = false
+    d(f"Stub {stub} ({self.stub_map[tonumber(stub)]}) is still a stub, stopping")
+    self:StopBlocked(room_id, stub)
+    return false
   end
 
-  d(f"Force next room = {tostring(force_next_room)}")
-
-  if force_next_room == true then
-    self:DetermineNextRoom()
-  end
-
-  return result
+  return true
 end
 
 function Explorer:CheckDoor()
@@ -583,7 +646,8 @@ function Explorer:CheckDoor()
     stub = self.status.stub,
     speedwalking = false,
   }
-  self:EnableTimer("Check Stub", self.prefs.speed, function() self:CheckStub() end)
+  self.stub_to_check = { room_id = room_id, stub = self.status.stub }
+  self:EnableTimer("Check Stub", 1, function() self:MoveTimedOut() end)
 
   self.dir_start = getEpoch()
 
@@ -690,17 +754,36 @@ function Explorer:Arrived(event, current_room_id)
 
   -- We haved moved into a new room
   if event == "onMoveMap" then
-    -- We are speedwalking, so we don't really care.
-    if self.status.speedwalking == true then return end
+    -- We are speedwalking, so this only shows that the walk is still going.
+    if self.status.speedwalking == true then
+      self:ArmSpeedwalkTimeout()
+      self:OpenRouteDoor(current_room_id)
+      return
+    end
     -- We are waiting on a door check
     if self.status.door then return end
   elseif event == "onDoorChange" then
     return
   elseif event == "sysSpeedwalkFinished" then
-    -- We are done speedwalking, so we can determine the next room to explore.
     if self.status.speedwalking == false then return end
+    deleteNamedTimer(self.config.name, "Speedwalk Timeout")
+
+    -- Finished only means the walk is over. Carto also raises it when the last
+    -- step lands somewhere else, or when the walk is stopped by hand.
+    if getPlayerRoom() ~= self.status.dest then
+      self:StopSpeedwalkFailed()
+      return
+    end
+
+    -- We are done speedwalking, so we can determine the next room to explore.
     self.status.speedwalking = false
     self:ScheduleNextMove()
+    return
+  end
+
+  -- We tried an exit and ended up where we started.
+  if self.status.stub and current_room_id == self.status.start then
+    self:StopBlocked(current_room_id, self.status.stub)
     return
   end
 
@@ -710,13 +793,10 @@ function Explorer:Arrived(event, current_room_id)
   -- This basically serves to stop the timer so that it doesn't go off.
   -- We did arrive, so clearly we were not blocked. It shouldn't return true,
   -- because we moved.
-  --
-  -- Don't force a move from CheckStub, we will do that below.
   -- if self.initial == false then
     -- self:StopExplore(true, false)
     d(f"Checking stub {self.stub_map[self.status.stub]} ({self.status.stub}) for room {current_room_id}")
-    if self:CheckStub(false) == false then
-      d(f"Stub {self.stub_map[self.status.stub]} ({self.status.stub}) is still a stub, removing from todo list")
+    if self:CheckStub() == false then
       return
     end
     d(f"Stub {self.stub_map[self.status.stub]} ({self.status.stub}) is not a stub, continuing")
@@ -746,18 +826,6 @@ function Explorer:Arrived(event, current_room_id)
     local index = table.index_of(self.todo, current_room_id)
     if index then
       table.remove(self.todo, index)
-    end
-  end
-
-  if current_room_id == self.status.start and not self.initial then
-    d(f"Ignoring stub {self.stub_map[self.status.stub]} ({self.status.stub}) in room {current_room_id}")
-    self:IgnoreStub(current_room_id, self.status.stub)
-    valid_stubs = self:GetValidStubs(current_room_id) or {}
-    if #valid_stubs == 0 then
-      local index = table.index_of(self.todo, current_room_id)
-      if index then
-        table.remove(self.todo, index)
-      end
     end
   end
 
