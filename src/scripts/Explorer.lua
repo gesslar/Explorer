@@ -42,9 +42,9 @@ end
 ---@field exit_short table            -- Lookup table for full direction to
 ---                                      short
 ---@field exploring boolean           -- Whether we are currently exploring
----@field ignore table                -- Table of stubs to ignore
----@field initial boolean             -- Whether we are in the initial state
----                                      (first room)
+---@field ignore table                -- Table of stubs to ignore, by room id.
+---                                      This is prefs.ignore, so it is saved
+---                                      and kept between runs.
 ---@field stats_label table           -- Handle to the stats overlay for the
 ---                                      map
 ---@field stats_label_arguments table -- Values to use when creating the stats
@@ -68,10 +68,11 @@ Explorer = Explorer or {
     preferences_file = f[[{script_name}.Preferences.lua]],
   },
   default = {
-    shuffle = 0,
     zoom = 10,
     speed = 0,
+    timeout = 5,
     stats = true,
+    ignore = {},
   },
   prefs = {},
   stub_map = {
@@ -100,7 +101,10 @@ Explorer = Explorer or {
     "sysDisconnectionEvent",
     "sysSpeedwalkStarted",
     "sysSpeedwalkFinished",
+    "sysSpeedwalkPaused",
+    "sysSpeedwalkStopped",
     "onSpeedwalkReset",
+    "onSpeedwalkFailed",
     "onMoveMap",
     -- For the map label
     "onExplorationStarted",
@@ -113,7 +117,6 @@ Explorer = Explorer or {
   areas = {},
   exploring = nil,
   ignore = {},
-  initial = nil,
   previous_area = nil,
   status = { start = nil, dest = nil, speedwalking = false, },
   stub_to_check = { room_id = nil, stub = nil },
@@ -162,6 +165,20 @@ function Explorer:Setup(event, package, ...)
       -- f reads locals on the stack, and this runs after the method has returned.
       local name = self.config.name
       cecho(f "<orange_red>[{name}] {message}\n")
+      return
+    end
+
+    -- The welcome prints through Helper, so it waits until Helper is installed.
+    if event == "sysInstall" then
+      tempTimer(1, function()
+        echo("\n")
+        cecho("<gold>Welcome to <b>"..self.config.name.."</b>!<reset>\n")
+        echo("\n")
+        helper.print({
+          text = self.help.topics.usage,
+          styles = self.help_styles
+        })
+      end)
     end
   end)
 
@@ -170,18 +187,6 @@ function Explorer:Setup(event, package, ...)
   end
 
   self:LoadPreferences()
-
-  if event == "sysInstall" then
-    tempTimer(1, function()
-      echo("\n")
-      cecho("<gold>Welcome to <b>"..self.config.name.."</b>!<reset>\n")
-      echo("\n")
-      helper.print({
-        text = self.help.topics.usage,
-        styles = self.help_styles
-      })
-    end)
-  end
 end
 
 function Explorer:LoadPreferences()
@@ -190,6 +195,7 @@ function Explorer:LoadPreferences()
   self.prefs = self.g.preferences.load(
     nil, self.config.preferences_file, self.default
   )
+  self.ignore = self.prefs.ignore
 end
 
 function Explorer:SavePreferences()
@@ -203,11 +209,7 @@ function Explorer:SetPreference(key, value)
     self.prefs = {}
   end
 
-  if key == "shuffle" then
-    value = tonumber(value)
-    if value == nil then return end
-    value = tonumber(value)
-  elseif key == "zoom" then
+  if key == "zoom" then
     value = tonumber(value)
     if value == nil then return end
     if value < 3 then value = 3 end
@@ -215,6 +217,10 @@ function Explorer:SetPreference(key, value)
     value = tonumber(value)
     if value == nil then return end
     if value < 0.0 then value = 0.0 end
+  elseif key == "timeout" then
+    value = tonumber(value)
+    if value == nil then return end
+    if value < 0.1 then value = 0.1 end
   elseif key == "stats" then
     d(f"key = {key}, value = {value}")
     if value == "true" then
@@ -322,10 +328,9 @@ function Explorer:ResetState()
   self.status = { dest = nil, start = nil, stub = nil, speedwalking = false }
   self.exploring = false
   self.todo = {}
-  self.ignore = {}
   self.previous_area = nil
   self.areas = {}
-  self.initial = nil
+  self.stub_to_check = nil
 end
 
 function Explorer:Explore()
@@ -356,6 +361,8 @@ end
 -- Stop exploring and reset the state.
 function Explorer:StopExplore(canceled, silent)
   d("StopExplore called")
+  local walking = self.status.speedwalking
+
   self:ResetState()
 
   if not silent then
@@ -367,6 +374,14 @@ function Explorer:StopExplore(canceled, silent)
   end
 
   deleteAllNamedTimers(self.config.name)
+
+  -- End the walk we started. Left open, Carto refuses the next walk and treats
+  -- the next room update as veering off the path, which stops the next run.
+  if walking and Carto and Carto.walking then
+    Carto:ResetWalking(true, "Exploration stopped.")
+  elseif walking and type(map) == "table" and map.stopSpeedwalk then
+    map.stopSpeedwalk()
+  end
 
   raiseEvent("onExplorationStopped", canceled, silent)
 end
@@ -390,14 +405,8 @@ function Explorer:DetermineNextRoom()
   if self.exploring and #self.todo == 0 then
     cecho("\n<medium_sea_green>Exploration complete.\n")
     if not table.is_empty(self.ignore) then
-      cecho("\n<royal_blue>The following exit stubs were not explored as we "
-        .. "could not move through them:\n")
-      for room_id, stubs in pairs(self.ignore) do
-        for _, stub in ipairs(stubs) do
-          echo("  Room " .. room_id .. " (" .. getRoomName(room_id) .. ") " ..
-            "-> " .. stub .. " (" .. self.stub_map[tonumber(stub)] .. ")\n")
-        end
-      end
+      cecho("\n<royal_blue>The following exit stubs were ignored:\n")
+      self:PrintIgnored()
     end
     self:StopExplore(false, false)
     return
@@ -430,7 +439,8 @@ function Explorer:DetermineNextRoom()
     end
     local dir_short = self.exit_short[direction]
     if dir_short then
-      if doors[dir_short] then
+      -- An open door isn't in the way, so it's the same as having no door.
+      if doors[dir_short] and doors[dir_short] ~= 1 then
         cecho(f"<red>Door in the way of {direction} ({dir_short})\n")
         self.status = {
           dest = nil,
@@ -440,7 +450,7 @@ function Explorer:DetermineNextRoom()
           door = dir_short,
         }
         d(f"Door in the way of {direction} ({dir_short})\n")
-        self:EnableTimer("Check Door", 1, function() self:CheckDoor() end)
+        self:EnableTimer("Check Door", self.prefs.timeout, function() self:CheckDoor() end)
 
         send(f"open {direction} door", true)
         return
@@ -458,24 +468,17 @@ function Explorer:DetermineNextRoom()
     raiseEvent("onNextRoomDetermined", current_room, current_area)
 
     self.stub_to_check = { room_id = current_room, stub = stub }
-    self.initial = self.initial == nil and true or false
 
-    d("Initial = " .. tostring(self.initial))
-    -- If this is the initial move, then we don't need to check for stubs.
-    -- since we haven't moved yet.
-    --if self.initial == false then
-      -- We sent a direction, so we need to arrive before this timer fires.
-      -- Arrived cancels it through CheckStub. If it does fire, we didn't get
-      -- there and exploration stops.
-      d(f"Expecting arrival within 1 second")
-      self:EnableTimer("Check Stub", 1, function() self:MoveTimedOut() end)
-    --end
+    -- We sent a direction, so we need to arrive before this timer fires.
+    -- Arrived cancels it through CheckStub. If it does fire, we didn't get
+    -- there and exploration stops.
+    d(f"Expecting arrival within {self.prefs.timeout} seconds")
+    self:EnableTimer("Check Stub", self.prefs.timeout, function() self:MoveTimedOut() end)
 
     ---@diagnostic disable-next-line: redundant-parameter
     raiseEvent("onExploreDirection", current_room, direction, stub)
     send(direction, true)
   else
-    self.initial = false
     d("self.status")
     for k, v in pairs(self.status) do
       d(f"  {k} = {v}")
@@ -499,12 +502,23 @@ function Explorer:DetermineNextRoom()
     raiseEvent("onNextRoomDetermined", next_room, next_area)
 
     cecho(f"<yellow>Traveling to room {next_room} from {current_room}\n")
-    tempTimer(self.prefs.speed, function()
-      local from_room = getPlayerRoom()
-      self.status.route = self:GetRoute(from_room, next_room)
+    tempTimer(self:MoveDelay(), function()
+      -- Exploration may have stopped while this was waiting.
+      if not self.exploring or self.status.dest ~= next_room then return end
+
+      -- Armed first, so that if anything below fails, the timer still ends this.
       self:ArmSpeedwalkTimeout()
-      self:OpenRouteDoor(from_room)
-      gotoRoom(next_room)
+
+      -- A mapper reports that it couldn't start before gotoRoom returns. Anything
+      -- it reports at any other time is about somebody else's walk.
+      self.status.walk_starting = true
+      local found = gotoRoom(next_room)
+      self.status.walk_starting = false
+
+      -- With no path, the mapper is never asked to walk, so it reports nothing.
+      if not found and self.exploring then
+        self:StopWalkNotStarted("No path found.")
+      end
     end)
   end
 end
@@ -524,46 +538,44 @@ function Explorer:StopSpeedwalkFailed()
   self:StopExplore(true, false)
 end
 
--- Restart the speedwalk's timer. Carto sends each step after the room update
--- from the last one, plus its delay, so a blocked step raises no event at all.
--- Every room change during the walk restarts this.
+-- Stop exploring because our speedwalk never started. Any walk still running
+-- isn't ours, so this leaves it alone.
+function Explorer:StopWalkNotStarted(reason)
+  local dest = self.status.dest
+
+  self.status.speedwalking = false
+  cecho(f"<red>Could not walk to room {dest}: {reason} Stopping exploration.\n")
+  self:StopExplore(true, false)
+end
+
+-- Restart the speedwalk's timer. Every room change during the walk restarts this.
+-- Carto times its own steps and raises onSpeedwalkReset when one fails, and has a
+-- setting for how long that is. Other mappers, such as generic_mapper, raise
+-- nothing when a step is blocked, so this is how we find out.
 function Explorer:ArmSpeedwalkTimeout()
-  local delay = Carto and Carto:GetSpeedwalkDelay() or 0
+  if Carto then return end
 
-  deleteNamedTimer(self.config.name, "Speedwalk Timeout")
-  registerNamedTimer(self.config.name, "Speedwalk Timeout", delay + 1, function()
+  self:EnableTimer("Speedwalk Timeout", self:MapperStepDelay() + self.prefs.timeout, function()
     if self.status.speedwalking then self:StopSpeedwalkFailed() end
-  end, false)
+  end)
 end
 
--- Build a lookup of room id to the direction a speedwalk leaves that room by.
-function Explorer:GetRoute(from_room, to_room)
-  local route = {}
-  if not getPath(from_room, to_room) then return route end
+-- The longest generic_mapper waits between steps. speedwalk_random adds up to the
+-- delay again.
+function Explorer:MapperStepDelay()
+  local configs = type(map) == "table" and map.configs
+  if not configs then return 0 end
 
-  -- speedWalkDir[i] is the step into speedWalkPath[i].
-  local room_id = from_room
-  for i, dir in ipairs(speedWalkDir) do
-    route[room_id] = dir
-    room_id = tonumber(speedWalkPath[i])
-  end
+  local delay = configs.speedwalk_delay or 0
 
-  return route
+  return configs.speedwalk_random and delay * 2 or delay
 end
 
--- The mapper doesn't open doors, so open the one on our next step of the
--- speedwalk. This goes out ahead of the step itself. If it doesn't open, the
--- step fails and the speedwalk's timer stops exploration.
-function Explorer:OpenRouteDoor(room_id)
-  local dir = self.status.route and self.status.route[room_id]
-  if not dir then return end
-
-  local doors = getDoors(room_id) or {}
-  if not doors[dir] then return end
-
-  local direction = self.exit_expand[dir] or dir
-  d(f"Opening the {direction} door on our route in room {room_id}")
-  send(f"open {direction} door", true)
+-- We are done speedwalking, so we can determine the next room to explore.
+function Explorer:SpeedwalkArrived()
+  deleteNamedTimer(self.config.name, "Speedwalk Timeout")
+  self.status.speedwalking = false
+  self:ScheduleNextMove()
 end
 
 -- We sent a direction and never arrived.
@@ -647,25 +659,116 @@ function Explorer:CheckDoor()
     speedwalking = false,
   }
   self.stub_to_check = { room_id = room_id, stub = self.status.stub }
-  self:EnableTimer("Check Stub", 1, function() self:MoveTimedOut() end)
+  self:EnableTimer("Check Stub", self.prefs.timeout, function() self:MoveTimedOut() end)
 
   self.dir_start = getEpoch()
 
   ---@diagnostic disable-next-line: redundant-parameter
-  raiseEvent("onExploreDirection", room_id, dir_full, self.stub_map[tonumber(self.status.stub)])
+  raiseEvent("onExploreDirection", room_id, dir_full, self.status.stub)
   send(dir_full, true)
 end
 
+-- Returns false if the stub was already ignored.
 function Explorer:IgnoreStub(room_id, stub)
   local rid = tostring(room_id)
 
-  if not self.ignore then self.ignore = {} end
   if not self.ignore[rid] then self.ignore[rid] = {} end
+  if table.index_of(self.ignore[rid], stub) then return false end
 
   table.insert(self.ignore[rid], stub)
+  self:SavePreferences()
 
   ---@diagnostic disable-next-line: redundant-parameter
   raiseEvent("onStubIgnored", room_id, stub, self.stub_map[tonumber(stub)])
+
+  return true
+end
+
+-- Returns false if the stub wasn't ignored.
+function Explorer:UnignoreStub(room_id, stub)
+  local rid = tostring(room_id)
+  local index = self.ignore[rid] and table.index_of(self.ignore[rid], stub)
+
+  if not index then return false end
+
+  table.remove(self.ignore[rid], index)
+  if #self.ignore[rid] == 0 then self.ignore[rid] = nil end
+  self:SavePreferences()
+
+  return true
+end
+
+-- Turn what was typed into a room and a stub. The room defaults to the one we
+-- are in. It can be given because a move that fails can leave us somewhere other
+-- than the room with the stub.
+function Explorer:ResolveStub(direction, room)
+  local name = (direction or ""):lower()
+  name = self.exit_expand[name] or name
+
+  local stub = self.stub_map[name]
+  if not stub then
+    cecho(f"<red>Unknown direction '{direction}'.\n")
+    return
+  end
+
+  local room_id
+  if room and room ~= "" then
+    room_id = tonumber(room)
+  else
+    room_id = getPlayerRoom()
+  end
+
+  if not room_id then
+    cecho("<red>Could not determine which room you mean.\n")
+    return
+  end
+
+  return room_id, stub, name
+end
+
+function Explorer:IgnoreDirection(direction, room)
+  local room_id, stub, name = self:ResolveStub(direction, room)
+  if not room_id then return end
+
+  if not table.index_of(getExitStubs1(room_id) or {}, stub) then
+    cecho(f"<orange>Room {room_id} has no {name} exit stub.\n")
+  elseif self:IgnoreStub(room_id, stub) then
+    cecho(f"<green>Ignoring the {name} exit stub in room {room_id}.\n")
+  else
+    cecho(f"<orange>The {name} exit stub in room {room_id} is already ignored.\n")
+  end
+end
+
+function Explorer:UnignoreDirection(direction, room)
+  local room_id, stub, name = self:ResolveStub(direction, room)
+  if not room_id then return end
+
+  if self:UnignoreStub(room_id, stub) then
+    cecho(f"<green>No longer ignoring the {name} exit stub in room {room_id}.\n")
+  else
+    cecho(f"<orange>The {name} exit stub in room {room_id} is not ignored.\n")
+  end
+end
+
+function Explorer:PrintIgnored()
+  for room_id, stubs in pairs(self.ignore) do
+    -- The list outlives the map, so the room may have been deleted since.
+    local room_name = getRoomName(tonumber(room_id)) or "unknown"
+    for _, stub in ipairs(stubs) do
+      echo("  Room " .. room_id .. " (" .. room_name .. ") " ..
+        "-> " .. stub .. " (" .. self.stub_map[tonumber(stub)] .. ")\n")
+    end
+  end
+end
+
+function Explorer:ListIgnored()
+  if table.is_empty(self.ignore) then
+    echo("No exit stubs are being ignored.\n")
+    return
+  end
+
+  echo("Ignored exit stubs:\n")
+  self:PrintIgnored()
 end
 
 function Explorer:GetValidStubs(room_id)
@@ -701,48 +804,37 @@ function Explorer:ScheduleNextMove()
   if not self.exploring then return end
   if self.status.speedwalking == true then return end
 
-  self.prefs.speed = self.prefs.speed ~= 0 and self.prefs.speed or 0.025
   self.dir_start = getEpoch()
-  self:EnableTimer("Determine Next Room", self.prefs.speed, function()
+  self:EnableTimer("Determine Next Room", self:MoveDelay(), function()
     self:DetermineNextRoom()
   end)
 end
 
-function Explorer:FindCandidateRoom()
-  local valid_stubs
-  local cheapest_path = { cost = math.huge, room_id = nil }
+-- How long to wait before a move. A speed of 0 still waits a moment.
+function Explorer:MoveDelay()
+  local speed = self.prefs.speed
 
+  return speed ~= 0 and speed or 0.025
+end
+
+-- Find the closest room on the todo list. IdentifyRoomsToExplore has just built
+-- that list, so every room on it has a stub to explore.
+function Explorer:FindCandidateRoom()
   local room_id = getPlayerRoom()
-  d(f"Finding candidate room for room {tostring(room_id)}")
   if not room_id then return nil end
 
-  d(f"We definitely have a room id = {tostring(room_id)}")
+  local cheapest_room, cheapest_cost = nil, math.huge
 
-  for index, current_room_id in ipairs(self.todo) do
-    local test = current_room_id
-    valid_stubs = self:GetValidStubs(test) or {}
-    d(f"valid_stubs for room {test}")
-    if #valid_stubs == 0 then
-      d(f"No valid stubs for room {test}, removing from todo list")
-      table.remove(self.todo, index)
-    else
-      for _, stub in ipairs(valid_stubs) do
-        local result, cost = getPath(room_id, test)
-        d(f"result = {result}")
-        d(f"cost = {tostring(cost)}")
-        if result then
-          if cost > -1 and cost < cheapest_path.cost then
-            cheapest_path = { cost = cost, room_id = test }
-          end
-        end
-      end
+  for _, candidate in ipairs(self.todo) do
+    local found, cost = getPath(room_id, candidate)
+    if found and cost > -1 and cost < cheapest_cost then
+      cheapest_room, cheapest_cost = candidate, cost
     end
   end
 
-  d(f"Cheapest path is to room {tostring(cheapest_path.room_id)}")
-  d(f"Cost = {tostring(cheapest_path.cost)}")
+  d(f"Cheapest path from {room_id} is to room {tostring(cheapest_room)}, cost {cheapest_cost}")
 
-  return cheapest_path.room_id
+  return cheapest_room
 end
 
 function Explorer:Arrived(event, current_room_id)
@@ -756,8 +848,11 @@ function Explorer:Arrived(event, current_room_id)
   if event == "onMoveMap" then
     -- We are speedwalking, so this only shows that the walk is still going.
     if self.status.speedwalking == true then
-      self:ArmSpeedwalkTimeout()
-      self:OpenRouteDoor(current_room_id)
+      if self.status.walk_finished and current_room_id == self.status.dest then
+        self:SpeedwalkArrived()
+      else
+        self:ArmSpeedwalkTimeout()
+      end
       return
     end
     -- We are waiting on a door check
@@ -766,43 +861,44 @@ function Explorer:Arrived(event, current_room_id)
     return
   elseif event == "sysSpeedwalkFinished" then
     if self.status.speedwalking == false then return end
-    deleteNamedTimer(self.config.name, "Speedwalk Timeout")
 
-    -- Finished only means the walk is over. Carto also raises it when the last
-    -- step lands somewhere else, or when the walk is stopped by hand.
-    if getPlayerRoom() ~= self.status.dest then
+    if getPlayerRoom() == self.status.dest then
+      self:SpeedwalkArrived()
+      return
+    end
+
+    -- Carto raises this when a walk is over, so being elsewhere means it failed.
+    if Carto then
       self:StopSpeedwalkFailed()
       return
     end
 
-    -- We are done speedwalking, so we can determine the next room to explore.
-    self.status.speedwalking = false
-    self:ScheduleNextMove()
+    -- generic_mapper raises this when it has sent the last step, which hasn't
+    -- landed yet. The timer decides if it ever does.
+    self.status.walk_finished = true
+    self:ArmSpeedwalkTimeout()
     return
   end
 
-  -- We tried an exit and ended up where we started.
+  -- An update for the room we tried to leave. With the stub still there, the
+  -- move may just be on its way, so the arrival timer decides. With the stub
+  -- gone, the exit was mapped back to this room, and that counts as arriving.
   if self.status.stub and current_room_id == self.status.start then
-    self:StopBlocked(current_room_id, self.status.stub)
-    return
+    local stubs = getExitStubs1(current_room_id) or {}
+    if table.index_of(stubs, self.status.stub) then return end
   end
-
-  ---@diagnostic disable-next-line: redundant-parameter
-  raiseEvent("onDirectionExplored", current_room_id, self.status.start, self.stub_map[self.status.stub])
 
   -- This basically serves to stop the timer so that it doesn't go off.
   -- We did arrive, so clearly we were not blocked. It shouldn't return true,
   -- because we moved.
-  -- if self.initial == false then
-    -- self:StopExplore(true, false)
-    d(f"Checking stub {self.stub_map[self.status.stub]} ({self.status.stub}) for room {current_room_id}")
-    if self:CheckStub() == false then
-      return
-    end
-    d(f"Stub {self.stub_map[self.status.stub]} ({self.status.stub}) is not a stub, continuing")
-  -- else
-    -- self.initial = false
-  -- end
+  d(f"Checking stub {self.stub_map[self.status.stub]} ({self.status.stub}) for room {current_room_id}")
+  if self:CheckStub() == false then
+    return
+  end
+  d(f"Stub {self.stub_map[self.status.stub]} ({self.status.stub}) is not a stub, continuing")
+
+  ---@diagnostic disable-next-line: redundant-parameter
+  raiseEvent("onDirectionExplored", current_room_id, self.status.start, self.stub_map[self.status.stub])
 
   local area_id = getRoomArea(current_room_id)
   if area_id then
@@ -841,7 +937,34 @@ function Explorer:Reset(event, exception, reason)
 end
 
 function Explorer:SpeedwalkStarted(event)
+  if not self.exploring then return end
+
   cecho(f"<yellow>Speedwalking started from {self.status.start} to {self.status.dest}\n")
+end
+
+-- While a walk is paused the character can go elsewhere, and resuming finds a new
+-- path from there, so we can't count on where it ends up or when.
+function Explorer:SpeedwalkPaused()
+  if not self.exploring or not self.status.speedwalking then return end
+
+  cecho("<red>The speedwalk was paused. Stopping exploration.\n")
+  self:StopExplore(true, false)
+end
+
+-- The mapper couldn't start a walk. Somebody else trying to walk during ours gets
+-- this too, with "You are already walking!", and ours carries on.
+function Explorer:SpeedwalkFailed(reason)
+  if not self.exploring or not self.status.walk_starting then return end
+
+  self:StopWalkNotStarted(reason)
+end
+
+-- Somebody stopped the walk we are waiting on.
+function Explorer:SpeedwalkStopped()
+  if not self.exploring or not self.status.speedwalking then return end
+
+  cecho("<red>The speedwalk was stopped. Stopping exploration.\n")
+  self:StopExplore(true, false)
 end
 
 -- Process uninstallation tasks.
@@ -864,8 +987,6 @@ function Explorer:Uninstall(event, package)
 end
 
 function Explorer:Disconnect(event)
-  local ignore_str
-
   if self.exploring == true then self:StopExplore(false, false) end
 end
 
@@ -878,8 +999,14 @@ function Explorer:EventHandler(event, ...)
     self:SpeedwalkStarted(event)
   elseif event == "sysSpeedwalkFinished" then
     self:Arrived(event, ...)
+  elseif event == "sysSpeedwalkPaused" then
+    self:SpeedwalkPaused()
+  elseif event == "sysSpeedwalkStopped" then
+    self:SpeedwalkStopped()
   elseif event == "onSpeedwalkReset" then
     self:Reset(event, ...)
+  elseif event == "onSpeedwalkFailed" then
+    self:SpeedwalkFailed(...)
   elseif event == "sysUninstall" then
     self:Uninstall(event, ...)
   elseif event == "sysDisconnectionEvent" then
@@ -896,7 +1023,7 @@ function Explorer:EventHandler(event, ...)
     self:ExplorationStopped(...)
   elseif event == "onDoorChange" then
     self:Arrived(event, ...)
-    -- self:DoorChange(...)
+    self:DoorChange(...)
   end
 end
 
@@ -925,6 +1052,8 @@ Explorer:SetupEventHandlers()
 function Explorer:DeleteMapLabel()
   if self.stats_label then
     deleteMapLabel(self.stats_label.area_id, self.stats_label.label_id)
+    -- Mudlet reuses label ids, so this one could belong to another label later.
+    self.stats_label = nil
   end
 end
 
@@ -942,6 +1071,9 @@ function Explorer:ExplorationStopped(canceled, silent)
 end
 
 function Explorer:StubIgnored(room_id, stub, direction)
+  -- A stub can be ignored by hand between runs, when there is no label.
+  if not self.exploring then return end
+
   self.exits_ignored = self.exits_ignored and self.exits_ignored + 1 or 1
   self:UpdateLabel()
 end
@@ -956,13 +1088,13 @@ function Explorer:CountStubs()
 end
 
 function Explorer:UpdateLabel()
-  local map_label = self.stats_label or {}
-
   self:DeleteMapLabel()
 
   if self.prefs.stats == false then return end
 
   local room_id = getPlayerRoom()
+  if not room_id then return end
+
   local area_id = getRoomArea(room_id)
   local x, y, z = getRoomCoordinates(room_id)
 
@@ -979,7 +1111,9 @@ function Explorer:UpdateLabel()
     average = average + timing
   end
 
-  average = average / #self.explore_timings
+  if #self.explore_timings > 0 then
+    average = average / #self.explore_timings
+  end
 
   local average_string = string.format("%.3f", average)
 
@@ -1031,33 +1165,33 @@ function Explorer:DirectionExplored(current_room_id, start_room_id, stub)
   self:UpdateLabel()
 end
 
---[[
+-- Go through as soon as the mapper says the door is open, rather than waiting for
+-- the timer, which is there for mappers that don't say, and doors that don't open.
 function Explorer:DoorChange(room_id, door_command, status, old_status)
   -- We're not exploring.
   if not self.exploring then return end
   -- We're not waiting on a door check.
   if not self.status.door then return end
+  -- It's some other door.
+  if room_id ~= self.status.start or door_command ~= self.status.door then return end
 
   -- The door is open and it wasn't before.
   if status == 1 and status ~= old_status then
     self:CheckDoor()
   end
 end
-]]
 
 
 -- ----------------------------------------------------------------------------
 -- Timers
 -- ----------------------------------------------------------------------------
 
+-- Always starts fresh. Resuming a stopped timer would keep its old interval, so
+-- a changed preference wouldn't apply.
 function Explorer:EnableTimer(name, interval, callback)
-  if table.index_of(getNamedTimers(self.config.name), name) then
-    d(f"Resuming timer {name}")
-    resumeNamedTimer(self.config.name, name)
-  else
-    d(f"Enabling timer {name} with interval {interval}")
-    registerNamedTimer(self.config.name, name, interval, callback, false)
-  end
+  d(f"Enabling timer {name} with interval {interval}")
+  deleteNamedTimer(self.config.name, name)
+  registerNamedTimer(self.config.name, name, interval, callback, false)
 end
 
 function Explorer:DisableTimer(name)
@@ -1088,14 +1222,18 @@ Syntax: <b>explore</b> [<b>command</b>]
   <b>explore stop</b> - Stop exploring.
   <b>explore set</b> - See your current preference settings.
   <b>explore set</b> <<b>preference</b>> <<b>value</b>> - Set a preference to a value.
+  <b>explore ignore</b> - See the exit stubs being ignored.
+  <b>explore ignore</b> <<b>direction</b>> [<<b>room</b>>] - Ignore an exit stub. The room defaults
+                to the one you are in.
+  <b>explore unignore</b> <<b>direction</b>> [<<b>room</b>>] - Stop ignoring an exit stub.
 
   Available preferences:
-    <b>shuffle</b>   - Set the maximum number of steps to take before selecting a
-                random exit stub to explore (default: <i>{Explorer.default.shuffle}</i>).
-    <b>zoom</b>      - Set the zoom level of the map during exploration
+    <b>zoom</b>     - Set the zoom level of the map during exploration
                 (default: <i>{Explorer.default.zoom}</i>).
     <b>speed</b>     - Set the speed of movement during exploration
                 (default: <i>{Explorer.default.speed}</i>).
+    <b>timeout</b>   - Set how many seconds to wait for a move or door to respond
+                before giving up on it (default: <i>{Explorer.default.timeout}</i>).
     <b>stats</b>     - Show exploration statistics during exploration
                 (default: <i>{Explorer.default.stats}</i>).
 ]],
