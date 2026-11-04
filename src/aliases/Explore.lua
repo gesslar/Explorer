@@ -8,7 +8,11 @@ if command == "start" then
   Explorer:Explore()
 elseif command == "stop" then
   -- Call function to stop exploration
-  Explorer:StopExplore(true, false)
+  if Explorer.exploring then
+    Explorer:StopExplore(true, false)
+  else
+    cecho("<orange>No exploration is in progress.\n")
+  end
 elseif command == "debug" then
   Explorer.debug = not Explorer.debug
   cecho("<gold>Debug mode " .. (Explorer.debug and "enabled" or "disabled") .. ".\n")

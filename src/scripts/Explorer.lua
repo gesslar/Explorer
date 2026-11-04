@@ -161,6 +161,9 @@ function Explorer:Setup(event, package, ...)
   }
 
   local queue = self.g.dependency_queue(dependencies, function(success, message)
+    -- We were uninstalled while the dependency was downloading.
+    if not self.config then return end
+
     if not success then
       -- f reads locals on the stack, and this runs after the method has returned.
       local name = self.config.name
@@ -169,8 +172,10 @@ function Explorer:Setup(event, package, ...)
     end
 
     -- The welcome prints through Helper, so it waits until Helper is installed.
+    -- A named timer, so that uninstalling cancels it. Uninstalling also wipes self,
+    -- which this would otherwise still try to use, such as in a quick reinstall.
     if event == "sysInstall" then
-      tempTimer(1, function()
+      self:EnableTimer("Welcome", 1, function()
         echo("\n")
         cecho("<gold>Welcome to <b>"..self.config.name.."</b>!<reset>\n")
         echo("\n")

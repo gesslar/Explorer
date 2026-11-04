@@ -150,6 +150,14 @@ describe("Explorer", function()
       assert.is_falsy(Explorer.exploring)
     end)
 
+    it("should say so when there is nothing to stop", function()
+      expandAlias("explore stop", false)
+
+      assert.is_truthy(output():find("No exploration is in progress.", 1, true))
+      assert.is_nil(output():find("canceled", 1, true))
+      assert.are.equal(0, #fired("onExplorationStopped"))
+    end)
+
     it("should start and stop exploring", function()
       local id = room({ NORTH })
       stand_in(id)
@@ -1085,6 +1093,39 @@ describe("Explorer", function()
   -- ==========================================================================
   -- Uninstalling
   -- ==========================================================================
+
+  describe("the welcome", function()
+    local stand_in_self, finished
+
+    before_each(function()
+      stand_in_self = {
+        config = Explorer.config,
+        help = Explorer.help,
+        help_styles = Explorer.help_styles,
+        g = { dependency_queue = function(_, callback) finished = callback end },
+        EnableTimer = Explorer.EnableTimer,
+        LoadPreferences = function() end,
+      }
+      Explorer.Setup(stand_in_self, "sysInstall", Explorer.config.package_name)
+    end)
+
+    it("should wait on a timer that uninstalling can cancel", function()
+      finished(true)
+
+      assert.is_not_nil(timers["Welcome"])
+
+      timers["Welcome"].callback()
+      assert.are.equal(1, #helped)
+    end)
+
+    it("should do nothing if uninstalled while waiting on a dependency", function()
+      for key in pairs(stand_in_self) do stand_in_self[key] = nil end
+
+      assert.has_no.errors(function() finished(true) end)
+      assert.has_no.errors(function() finished(false, "It failed.") end)
+      assert.is_nil(timers["Welcome"])
+    end)
+  end)
 
   describe("Uninstall", function()
     local installed, stopped
