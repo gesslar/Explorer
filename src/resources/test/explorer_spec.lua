@@ -1083,6 +1083,43 @@ describe("Explorer", function()
   end)
 
   -- ==========================================================================
+  -- Uninstalling
+  -- ==========================================================================
+
+  describe("Uninstall", function()
+    local installed, stopped
+
+    -- Uninstall wipes what it's called on and the global, so give it a stand-in
+    -- and put the real one back afterwards.
+    local function uninstall(exploring)
+      Explorer.Uninstall({
+        config = Explorer.config,
+        exploring = exploring,
+        StopExplore = function() stopped = stopped + 1 end,
+      }, "ignored", Explorer.config.package_name)
+    end
+
+    before_each(function()
+      installed, stopped = Explorer, 0
+      shim("deleteAllNamedEventHandlers", function() end)
+    end)
+
+    after_each(function()
+      _G.Explorer = installed
+    end)
+
+    it("should say nothing when it isn't exploring", function()
+      uninstall(false)
+      assert.are.equal(0, stopped)
+    end)
+
+    it("should stop exploring first if it is", function()
+      uninstall(true)
+      assert.are.equal(1, stopped)
+    end)
+  end)
+
+  -- ==========================================================================
   -- Map label
   -- ==========================================================================
 
