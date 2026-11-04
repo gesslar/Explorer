@@ -361,7 +361,7 @@ end
 -- Stop exploring and reset the state.
 function Explorer:StopExplore(canceled, silent)
   d("StopExplore called")
-  local walking = self.status.speedwalking
+  local walking = self.status.walk_started
 
   self:ResetState()
 
@@ -502,12 +502,14 @@ function Explorer:DetermineNextRoom()
     raiseEvent("onNextRoomDetermined", next_room, next_area)
 
     cecho(f"<yellow>Traveling to room {next_room} from {current_room}\n")
-    tempTimer(self:MoveDelay(), function()
-      -- Exploration may have stopped while this was waiting.
-      if not self.exploring or self.status.dest ~= next_room then return end
-
+    -- A named timer, so that stopping exploration cancels it.
+    self:EnableTimer("Start Speedwalk", self:MoveDelay(), function()
       -- Armed first, so that if anything below fails, the timer still ends this.
       self:ArmSpeedwalkTimeout()
+
+      -- Until now, any walk going on is somebody else's. Set before asking, as a
+      -- mapper can finish before gotoRoom returns if it just sends everything.
+      self.status.walk_started = true
 
       -- A mapper reports that it couldn't start before gotoRoom returns. Anything
       -- it reports at any other time is about somebody else's walk.
@@ -543,7 +545,7 @@ end
 function Explorer:StopWalkNotStarted(reason)
   local dest = self.status.dest
 
-  self.status.speedwalking = false
+  self.status.walk_started = false
   cecho(f"<red>Could not walk to room {dest}: {reason} Stopping exploration.\n")
   self:StopExplore(true, false)
 end
@@ -575,6 +577,7 @@ end
 function Explorer:SpeedwalkArrived()
   deleteNamedTimer(self.config.name, "Speedwalk Timeout")
   self.status.speedwalking = false
+  self.status.walk_started = false
   self:ScheduleNextMove()
 end
 
@@ -850,7 +853,7 @@ function Explorer:Arrived(event, current_room_id)
     if self.status.speedwalking == true then
       if self.status.walk_finished and current_room_id == self.status.dest then
         self:SpeedwalkArrived()
-      else
+      elseif self.status.walk_started then
         self:ArmSpeedwalkTimeout()
       end
       return
@@ -860,7 +863,7 @@ function Explorer:Arrived(event, current_room_id)
   elseif event == "onDoorChange" then
     return
   elseif event == "sysSpeedwalkFinished" then
-    if self.status.speedwalking == false then return end
+    if not self.status.walk_started then return end
 
     if getPlayerRoom() == self.status.dest then
       self:SpeedwalkArrived()
@@ -933,7 +936,7 @@ end
 function Explorer:Reset(event, exception, reason)
   if not self.exploring then return end
 
-  if exception then self:StopExplore(true, false) end
+  if exception and self.status.walk_started then self:StopExplore(true, false) end
 end
 
 function Explorer:SpeedwalkStarted(event)
@@ -945,7 +948,7 @@ end
 -- While a walk is paused the character can go elsewhere, and resuming finds a new
 -- path from there, so we can't count on where it ends up or when.
 function Explorer:SpeedwalkPaused()
-  if not self.exploring or not self.status.speedwalking then return end
+  if not self.exploring or not self.status.walk_started then return end
 
   cecho("<red>The speedwalk was paused. Stopping exploration.\n")
   self:StopExplore(true, false)
@@ -961,7 +964,7 @@ end
 
 -- Somebody stopped the walk we are waiting on.
 function Explorer:SpeedwalkStopped()
-  if not self.exploring or not self.status.speedwalking then return end
+  if not self.exploring or not self.status.walk_started then return end
 
   cecho("<red>The speedwalk was stopped. Stopping exploration.\n")
   self:StopExplore(true, false)

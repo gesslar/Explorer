@@ -2,7 +2,7 @@ describe("Explorer", function()
   local NORTH, EAST, SOUTH = 1, 4, 6
 
   local real = {}
-  local sent, printed, events, timers, delayed, walks, labels, helped
+  local sent, printed, events, timers, walks, labels, helped
   local area_id
   local created_rooms
   local player_room
@@ -64,7 +64,7 @@ describe("Explorer", function()
   end
 
   before_each(function()
-    sent, printed, events, timers, delayed, walks, labels, helped = {}, {}, {}, {}, {}, {}, {}, {}
+    sent, printed, events, timers, walks, labels, helped = {}, {}, {}, {}, {}, {}, {}
     created_rooms = {}
     player_room = nil
 
@@ -77,10 +77,7 @@ describe("Explorer", function()
       return true
     end)
     shim("setMapZoom", function() end)
-    shim("tempTimer", function(_, callback)
-      delayed[#delayed + 1] = callback
-      return #delayed
-    end)
+    shim("tempTimer", function() return 1 end)
     -- Named timers never fire by themselves here. Specs fire them by hand. These
     -- can't call through, as Mudlet builds named timers on top of tempTimer.
     shim("registerNamedTimer", function(_, name, interval, callback)
@@ -652,7 +649,7 @@ describe("Explorer", function()
       start()
       Explorer:DetermineNextRoom()
       assert.are.equal(dest, Explorer.status.dest)
-      assert.are.equal(1, #delayed)
+      assert.is_not_nil(timers["Start Speedwalk"])
     end
 
     before_each(function()
@@ -665,7 +662,7 @@ describe("Explorer", function()
 
     it("should walk to the room with a stub", function()
       walk_scheduled()
-      delayed[1]()
+      timers["Start Speedwalk"].callback()
 
       assert.are.same({ dest }, walks)
     end)
@@ -674,8 +671,7 @@ describe("Explorer", function()
       walk_scheduled()
       Explorer:StopExplore(true, true)
 
-      delayed[1]()
-
+      assert.is_nil(timers["Start Speedwalk"])
       assert.are.equal(0, #walks)
       assert.are.equal(0, #sent)
     end)
@@ -684,7 +680,7 @@ describe("Explorer", function()
       _G.Carto = { walking = true }
       walk_scheduled()
 
-      delayed[1]()
+      timers["Start Speedwalk"].callback()
       raiseEvent("onMoveMap", middle)
 
       assert.is_nil(timers["Speedwalk Timeout"])
@@ -698,7 +694,7 @@ describe("Explorer", function()
       end)
       walk_scheduled()
 
-      delayed[1]()
+      timers["Start Speedwalk"].callback()
 
       assert.is_false(Explorer.exploring)
       assert.is_truthy(output():find("Could not walk to room " .. dest .. ": No exits found.", 1, true))
@@ -708,7 +704,7 @@ describe("Explorer", function()
       shim("gotoRoom", function() return nil, "no path found" end)
       walk_scheduled()
 
-      delayed[1]()
+      timers["Start Speedwalk"].callback()
 
       assert.is_false(Explorer.exploring)
       assert.is_truthy(output():find("Could not walk to room " .. dest .. ": No path found.", 1, true))
@@ -723,7 +719,7 @@ describe("Explorer", function()
       end)
       walk_scheduled()
 
-      delayed[1]()
+      timers["Start Speedwalk"].callback()
 
       assert.is_false(Explorer.exploring)
       assert.is_false(reset)
@@ -733,7 +729,7 @@ describe("Explorer", function()
     it("should carry on if somebody else can't walk during its walk", function()
       _G.Carto = { walking = true, ResetWalking = function() end }
       walk_scheduled()
-      delayed[1]()
+      timers["Start Speedwalk"].callback()
       printed = {}
 
       raiseEvent("onSpeedwalkFailed", "You are already walking!")
@@ -759,7 +755,7 @@ describe("Explorer", function()
     it("should stop if Carto finishes somewhere else", function()
       _G.Carto = { walking = true, ResetWalking = function() end }
       walk_scheduled()
-      delayed[1]()
+      timers["Start Speedwalk"].callback()
       stand_in(middle)
 
       raiseEvent("sysSpeedwalkFinished")
@@ -772,7 +768,7 @@ describe("Explorer", function()
       Explorer.prefs.timeout = 2.5
       walk_scheduled()
 
-      delayed[1]()
+      timers["Start Speedwalk"].callback()
 
       assert.are.equal(4.5, timers["Speedwalk Timeout"].interval)
     end)
@@ -782,7 +778,7 @@ describe("Explorer", function()
       Explorer.prefs.timeout = 2.5
       walk_scheduled()
 
-      delayed[1]()
+      timers["Start Speedwalk"].callback()
 
       assert.are.equal(3.5, timers["Speedwalk Timeout"].interval)
     end)
@@ -790,7 +786,7 @@ describe("Explorer", function()
     it("should wait for the last step after generic_mapper finishes", function()
       _G.map = { configs = {} }
       walk_scheduled()
-      delayed[1]()
+      timers["Start Speedwalk"].callback()
       stand_in(middle)
 
       raiseEvent("sysSpeedwalkFinished")
@@ -814,7 +810,7 @@ describe("Explorer", function()
     it("should stop if the last step never lands after generic_mapper finishes", function()
       _G.map = { configs = {} }
       walk_scheduled()
-      delayed[1]()
+      timers["Start Speedwalk"].callback()
       stand_in(middle)
       raiseEvent("sysSpeedwalkFinished")
 
@@ -828,7 +824,7 @@ describe("Explorer", function()
       local stopped = 0
       _G.map = { configs = {}, stopSpeedwalk = function() stopped = stopped + 1 end }
       walk_scheduled()
-      delayed[1]()
+      timers["Start Speedwalk"].callback()
 
       Explorer:StopExplore(true, true)
 
@@ -848,7 +844,7 @@ describe("Explorer", function()
 
     it("should stop if somebody stops the walk", function()
       walk_scheduled()
-      delayed[1]()
+      timers["Start Speedwalk"].callback()
 
       raiseEvent("sysSpeedwalkStopped")
 
@@ -869,7 +865,7 @@ describe("Explorer", function()
 
     it("should stop if the walk times out", function()
       walk_scheduled()
-      delayed[1]()
+      timers["Start Speedwalk"].callback()
 
       timers["Speedwalk Timeout"].callback()
 
@@ -881,7 +877,7 @@ describe("Explorer", function()
       setDoor(here, "n", 2)
       setDoor(middle, "n", 2)
       walk_scheduled()
-      delayed[1]()
+      timers["Start Speedwalk"].callback()
       stand_in(middle)
 
       raiseEvent("onMoveMap", middle)
@@ -892,7 +888,7 @@ describe("Explorer", function()
 
     it("should carry on if the walk finishes at the destination", function()
       walk_scheduled()
-      delayed[1]()
+      timers["Start Speedwalk"].callback()
       stand_in(dest)
 
       raiseEvent("sysSpeedwalkFinished")
@@ -909,7 +905,7 @@ describe("Explorer", function()
         ResetWalking = function(_, exception) reset = exception end,
       }
       walk_scheduled()
-      delayed[1]()
+      timers["Start Speedwalk"].callback()
 
       Explorer:StopExplore(true, true)
 
@@ -932,6 +928,7 @@ describe("Explorer", function()
 
     it("should stop on an exception from the mapper", function()
       walk_scheduled()
+      timers["Start Speedwalk"].callback()
       raiseEvent("onSpeedwalkReset", true, "You have veered off the expected path.")
       assert.is_false(Explorer.exploring)
     end)
@@ -943,7 +940,7 @@ describe("Explorer", function()
         ResetWalking = function(_, exception) reset = exception end,
       }
       walk_scheduled()
-      delayed[1]()
+      timers["Start Speedwalk"].callback()
 
       raiseEvent("sysSpeedwalkPaused")
 
@@ -961,6 +958,73 @@ describe("Explorer", function()
 
       assert.is_true(Explorer.exploring)
       assert.are.equal("", output())
+    end)
+
+    describe("before its own walk has started", function()
+      local reset
+
+      before_each(function()
+        reset = false
+        _G.Carto = { walking = true, ResetWalking = function() reset = true end }
+        walk_scheduled()
+      end)
+
+      it("should leave somebody else's walk alone when stopped", function()
+        Explorer:StopExplore(true, true)
+        assert.is_false(reset)
+      end)
+
+      it("should not stop for somebody else's walk pausing", function()
+        raiseEvent("sysSpeedwalkPaused")
+        assert.is_true(Explorer.exploring)
+      end)
+
+      it("should not stop for somebody else's walk being stopped", function()
+        raiseEvent("sysSpeedwalkStopped")
+        assert.is_true(Explorer.exploring)
+      end)
+
+      it("should not stop for somebody else's walk finishing", function()
+        raiseEvent("sysSpeedwalkFinished")
+        assert.is_true(Explorer.exploring)
+      end)
+
+      it("should not stop for somebody else's walk failing", function()
+        raiseEvent("onSpeedwalkReset", true, "You have veered off the expected path.")
+        assert.is_true(Explorer.exploring)
+      end)
+    end)
+
+    it("should not arm its timer on a room update before its walk starts", function()
+      walk_scheduled()
+
+      raiseEvent("onMoveMap", here)
+
+      assert.is_nil(timers["Speedwalk Timeout"])
+    end)
+
+    it("should not stop for somebody else's walk failing during a stub move", function()
+      local from = room({ NORTH })
+      moving_north_from(from)
+
+      raiseEvent("onSpeedwalkReset", true, "You have veered off the expected path.")
+
+      assert.is_true(Explorer.exploring)
+    end)
+
+    it("should handle a mapper that finishes before gotoRoom returns", function()
+      shim("gotoRoom", function()
+        raiseEvent("sysSpeedwalkFinished")
+        return true
+      end)
+      walk_scheduled()
+
+      timers["Start Speedwalk"].callback()
+
+      assert.is_true(Explorer.status.walk_finished)
+      stand_in(dest)
+      raiseEvent("onMoveMap", dest)
+      assert.is_false(Explorer.status.speedwalking)
     end)
 
     it("should say nothing about walks outside of a run", function()
@@ -994,6 +1058,16 @@ describe("Explorer", function()
       Explorer:EnableTimer(name, 60, function() end)
 
       assert.is_truthy(table.index_of(getNamedTimers(Explorer.config.name), name))
+    end)
+
+    it("should not fire once all of the timers are deleted", function()
+      local fired_it = false
+
+      Explorer:EnableTimer(name, 0.01, function() fired_it = true end)
+      deleteAllNamedTimers(Explorer.config.name)
+      pumpEvents(100)
+
+      assert.is_false(fired_it)
     end)
 
     it("should fire the callback of the latest call", function()
