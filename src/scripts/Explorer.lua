@@ -976,7 +976,7 @@ function Explorer:Uninstall(event, package)
     return
   end
 
-  self:StopExplore(false, false)
+  if self.exploring then self:StopExplore(false, false) end
 
   deleteAllNamedEventHandlers(self.config.name)
   deleteAllNamedTimers(self.config.name)
