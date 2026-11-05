@@ -1,6 +1,6 @@
 {
   "name": "explorer",
-  "version": "1.4.2",
+  "version": "1.4.3",
   "author": {
     "name": "gesslar"
   },
@@ -13,11 +13,11 @@
     "major": "npx -y @gesslar/muddy version major --package && npm i",
     "minor": "npx -y @gesslar/muddy version minor --package && npm i",
     "patch": "npx -y @gesslar/muddy version patch --package && npm i",
-    "update": "npx -y npm-check-updates -u && npm install",
-    "update-glu": "curl -fsSL --create-dirs -o src/resources/vendor/Glu-single.lua https://github.com/gesslar/Glu/releases/latest/download/Glu-single.lua"
+    "update": "npx -y npm-check-updates -u && npm install && npm run glu",
+    "glu": "npm install @gesslar/glu@latest && cp node_modules/@gesslar/glu/build/Glu-single.lua src/resources/vendor/Glu-single.lua"
   },
   "license": "0BSD",
   "devDependencies": {
-    "@gesslar/glu": "^3.0.0"
+    "@gesslar/glu": "^3.1.0"
   }
 }

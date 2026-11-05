@@ -330,6 +330,10 @@ local Glu
       function(_, p)
         if p == instance.package_name then
           deleteNamedEventHandler("glu", handler_name)
+          -- Have to come first: their handlers outlive us otherwise, and the
+          -- validators they call need the instance.
+          instance.dependency_queue.clean_up_all()
+          instance.http.delete_all_requests()
           instance = nil
         end
       end
@@ -1805,6 +1809,9 @@ local DependencyInstallClass = Glu.glass.register({
           self.discard_temp()
           ___.table.shift(self.packages)
           tempTimer(1, function()
+            -- Ended while this was waiting, such as by the package being uninstalled.
+            if not self.queue then return end
+
             self.queue.execute()
             if #self.packages == 0 then
               -- Cleaned up first, so a callback that throws can't leave handlers behind.
@@ -1854,6 +1861,8 @@ local DependencyInstallClass = Glu.glass.register({
           self.fail("Failed to download dependency `<b>" .. name .. "</b>`: " .. reason .. "\nCleaning up.\n")
         end
       )
+
+      self.container.installs[self] = true
 
       return self
     end
@@ -1906,8 +1915,11 @@ local DependencyInstallClass = Glu.glass.register({
     --- Removes the registered event handlers and tears down the queue.
     --- Deletes the named sysInstallPackage, sysDownloadDone and sysDownloadError
     --- handlers, discards any temporary download, and clears the handler name
-    --- and queue.
+    --- and queue. Safe to call more than once, so a package's own uninstall
+    --- handler can call it after Glu has already ended the queue.
     function self.clean_up()
+      if not self.queue then return end
+
       self.discard_temp()
 
       deleteNamedEventHandler("glu", self.handler_name)
@@ -1916,6 +1928,7 @@ local DependencyInstallClass = Glu.glass.register({
       self.handler_name = nil
       self.container.delete(self.queue.id)
       self.queue = nil
+      self.container.installs[self] = nil
     end
 
     --- Begins executing the queue.
@@ -1941,6 +1954,19 @@ local DependencyQueueClass = Glu.glass.register({
   call = "new_dependency_queue",
   dependencies = { "queue", "table", },
   setup = function(___, self)
+    -- Every install with handlers registered, added and removed by the install
+    -- itself. Each Glu instance has its own, so a package only reaches its own.
+    self.installs = {}
+
+    --- Ends every queue still running on this Glu instance without invoking
+    --- their callbacks. Used when the package is uninstalled, as a callback may
+    --- touch state that has already been wiped.
+    function self.clean_up_all()
+      for install in pairs(self.installs) do
+        install.clean_up()
+      end
+    end
+
     --- Builds a queue that installs any of the given Mudlet packages that are not already installed.
     --- Filters out already-installed packages, downloads each remaining package into its own
     --- temporary directory, installs it from there, and invokes the callback with success and a
@@ -2732,6 +2758,18 @@ local HttpClass = Glu.glass.register({
           table.remove(requests, i)
           break
         end
+      end
+    end
+
+    --- Removes every tracked HTTP request on this Glu instance, along with
+    --- their event handlers. Their callbacks will not be called. Used when the
+    --- package is uninstalled, as a callback may touch state that has already
+    --- been wiped.
+    ---
+    ---@return nil result Nothing.
+    function self.delete_all_requests()
+      while requests[1] do
+        self.delete_request(requests[1].id)
       end
     end
 

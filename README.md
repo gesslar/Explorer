@@ -236,7 +236,7 @@ are missing:
   [mudlet-busted](https://hub.docker.com/r/gesslardev/mudlet-busted) image
 * `npm run test:tree` - Run the specs with nested describe/it output
 * `npm run docker:update` - Pull the latest mudlet-busted image
-* `npm run update-glu` - Update the bundled copy of
+* `npm run glu` - Update the bundled copy of
   [Glu](https://github.com/gesslar/Glu)
 
 Pull requests to `main` run the specs through the Quality workflow. Merging one
