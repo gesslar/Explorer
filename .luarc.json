@@ -7,7 +7,8 @@
     "ignoredFiles": "Disable",
     "globals": [
       "gmod",
-      "mudlet"
+      "mudlet",
+      "helper"
     ],
     "disable": [
       "lowercase-global"
@@ -20,7 +21,9 @@
       "node_modules/@gesslar/glu/build/library"
     ],
     "ignoreDir": [
-      "Glu-single.lua"
+      "Glu-single.lua",
+      "src/resources/vendor",
+      "src/resources/test"
     ],
     "useGitIgnore": true
   }

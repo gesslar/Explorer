@@ -1104,7 +1104,6 @@ describe("Explorer", function()
         help_styles = Explorer.help_styles,
         g = { dependency_queue = function(_, callback) finished = callback end },
         EnableTimer = Explorer.EnableTimer,
-        LoadPreferences = function() end,
       }
       Explorer.Setup(stand_in_self, "sysInstall", Explorer.config.package_name)
     end)

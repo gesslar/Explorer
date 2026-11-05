@@ -65,7 +65,7 @@ Explorer = Explorer or {
     name = script_name,
     package_name = "__PKGNAME__",
     package_path = getMudletHomeDir() .. "/__PKGNAME__/",
-    preferences_file = f[[{script_name}.Preferences.lua]],
+    preferences_file = f [[{script_name}.Preferences.lua]],
   },
   default = {
     zoom = 10,
@@ -76,23 +76,60 @@ Explorer = Explorer or {
   },
   prefs = {},
   stub_map = {
-    north = 1,        northeast = 2,      northwest = 3,      east = 4,
-    west = 5,         south = 6,          southeast = 7,      southwest = 8,
-    up = 9,           down = 10,          ["in"] = 11,        out = 12,
-    [1] = "north",    [2] = "northeast",  [3] = "northwest",  [4] = "east",
-    [5] = "west",     [6] = "south",      [7] = "southeast",  [8] = "southwest",
-    [9] = "up",       [10] = "down",      [11] = "in",        [12] = "out",
+    north = 1,
+    northeast = 2,
+    northwest = 3,
+    east = 4,
+    west = 5,
+    south = 6,
+    southeast = 7,
+    southwest = 8,
+    up = 9,
+    down = 10,
+    ["in"] = 11,
+    out = 12,
+    [1] = "north",
+    [2] = "northeast",
+    [3] = "northwest",
+    [4] = "east",
+    [5] = "west",
+    [6] = "south",
+    [7] = "southeast",
+    [8] = "southwest",
+    [9] = "up",
+    [10] = "down",
+    [11] = "in",
+    [12] = "out",
   },
   exit_expand = {
-    n = "north",      ne = "northeast", nw = "northwest", e = "east",
-    w = "west",       s = "south",      se = "southeast", sw = "southwest",
-    u = "up",         d = "down",       ["in"] = "in",    out = "out",
-    up = "up",        down = "down",
+    n = "north",
+    ne = "northeast",
+    nw = "northwest",
+    e = "east",
+    w = "west",
+    s = "south",
+    se = "southeast",
+    sw = "southwest",
+    u = "up",
+    d = "down",
+    ["in"] = "in",
+    out = "out",
+    up = "up",
+    down = "down",
   },
   exit_short = {
-    north = "n",    northeast = "ne", northwest = "nw", east = "e",
-    west = "w",     south = "s",      southeast = "se", southwest = "sw",
-    up = "up",      down = "down",    ["in"] = "in",    out = "out",
+    north = "n",
+    northeast = "ne",
+    northwest = "nw",
+    east = "e",
+    west = "w",
+    south = "s",
+    southeast = "se",
+    southwest = "sw",
+    up = "up",
+    down = "down",
+    ["in"] = "in",
+    out = "out",
   },
   event_handlers = {
     "sysLoadEvent",
@@ -123,12 +160,17 @@ Explorer = Explorer or {
   todo = {},
   stats_label = nil,
   stats_label_arguments = {
-    fgRed = 255, fgGreen = 215, fgBlue = 0,
+    fgRed = 255,
+    fgGreen = 215,
+    fgBlue = 0,
     foregroundTransparency = 255,
-    bgRed = 0, bgGreen = 0, bgBlue = 0,
+    bgRed = 0,
+    bgGreen = 0,
+    bgBlue = 0,
     backgroundTransparency = 175,
     zoom = 25,
-    fontName = "Ubuntu", fontSize = 10,
+    fontName = "Ubuntu",
+    fontSize = 10,
     showOnTop = true,
     noScaling = true,
     temporary = true
@@ -177,7 +219,7 @@ function Explorer:Setup(event, package, ...)
     if event == "sysInstall" then
       self:EnableTimer("Welcome", 1, function()
         echo("\n")
-        cecho("<gold>Welcome to <b>"..self.config.name.."</b>!<reset>\n")
+        cecho("<gold>Welcome to <b>" .. self.config.name .. "</b>!<reset>\n")
         echo("\n")
         helper.print({
           text = self.help.topics.usage,
@@ -190,8 +232,6 @@ function Explorer:Setup(event, package, ...)
   if queue then
     queue.start()
   end
-
-  self:LoadPreferences()
 end
 
 function Explorer:LoadPreferences()
@@ -227,7 +267,7 @@ function Explorer:SetPreference(key, value)
     if value == nil then return end
     if value < 0.1 then value = 0.1 end
   elseif key == "stats" then
-    d(f"key = {key}, value = {value}")
+    d(f "key = {key}, value = {value}")
     if value == "true" then
       value = true
     elseif value == "false" then
@@ -257,8 +297,8 @@ function Explorer:IdentifyRoomsToExplore()
   -- Populate areas with all known areas by the mapper
   self:UpdateAreas()
 
-  d(f"Current area = {tostring(current_area)}")
-  d(f"Previous area = {tostring(self.previous_area)}")
+  d(f "Current area = {tostring(current_area)}")
+  d(f "Previous area = {tostring(self.previous_area)}")
   if not self.previous_area then self.previous_area = current_area end
 
   -- Keep looking for valid rooms to explore across areas
@@ -273,7 +313,7 @@ function Explorer:IdentifyRoomsToExplore()
         local valid_stubs = self:GetValidStubs(room_id) or {}
         if #valid_stubs > 0 then
           -- We have valid stubs, so we can add the room to the todo list.
-          self.todo[#self.todo+1] = room_id
+          self.todo[#self.todo + 1] = room_id
         end
       end
     end
@@ -312,7 +352,7 @@ function Explorer:GetValidAreas()
   local valid = {}
   for area_id, state in pairs(self.areas) do
     if state == true then
-      valid[#valid+1] = tonumber(area_id)
+      valid[#valid + 1] = tonumber(area_id)
     end
   end
   return valid
@@ -419,9 +459,9 @@ function Explorer:DetermineNextRoom()
 
   local stubs = self:GetValidStubs(current_room) or {}
 
-  d(f"Valid stubs for room {current_room}:")
+  d(f "Valid stubs for room {current_room}:")
   for _, stub in ipairs(stubs) do
-    d(f"Stub {stub} -> {self.stub_map[tonumber(stub)]}")
+    d(f "Stub {stub} -> {self.stub_map[tonumber(stub)]}")
   end
 
   if self.previous_area == current_area and #stubs > 0 then -- we have unexplored stubs in our current room
@@ -434,10 +474,10 @@ function Explorer:DetermineNextRoom()
     end
 
     -- Do we have a door in this direction?
-    d(f"Checking for a door in the {direction} direction in room {current_room}\n")
+    d(f "Checking for a door in the {direction} direction in room {current_room}\n")
     local doors = getDoors(current_room) or {}
     for k, v in pairs(doors) do
-      d(f"  door {k} = {v}")
+      d(f "  door {k} = {v}")
     end
     if #doors == 0 then
       d("No doors in room " .. current_room .. "\n")
@@ -446,7 +486,7 @@ function Explorer:DetermineNextRoom()
     if dir_short then
       -- An open door isn't in the way, so it's the same as having no door.
       if doors[dir_short] and doors[dir_short] ~= 1 then
-        cecho(f"<red>Door in the way of {direction} ({dir_short})\n")
+        cecho(f "<red>Door in the way of {direction} ({dir_short})\n")
         self.status = {
           dest = nil,
           start = current_room,
@@ -454,14 +494,14 @@ function Explorer:DetermineNextRoom()
           speedwalking = false,
           door = dir_short,
         }
-        d(f"Door in the way of {direction} ({dir_short})\n")
+        d(f "Door in the way of {direction} ({dir_short})\n")
         self:EnableTimer("Check Door", self.prefs.timeout, function() self:CheckDoor() end)
 
-        send(f"open {direction} door", true)
+        send(f "open {direction} door", true)
         return
       end
     end
-    d(f"No door leading {direction} in room {current_room}\n")
+    d(f "No door leading {direction} in room {current_room}\n")
     self.status = {
       dest = nil,
       start = current_room,
@@ -469,7 +509,7 @@ function Explorer:DetermineNextRoom()
       speedwalking = false,
     }
 
-    cecho(f"<yellow>Exploring the {direction} exit from {current_room} ({getRoomName(current_room)})\n")
+    cecho(f "<yellow>Exploring the {direction} exit from {current_room} ({getRoomName(current_room)})\n")
     raiseEvent("onNextRoomDetermined", current_room, current_area)
 
     self.stub_to_check = { room_id = current_room, stub = stub }
@@ -477,7 +517,7 @@ function Explorer:DetermineNextRoom()
     -- We sent a direction, so we need to arrive before this timer fires.
     -- Arrived cancels it through CheckStub. If it does fire, we didn't get
     -- there and exploration stops.
-    d(f"Expecting arrival within {self.prefs.timeout} seconds")
+    d(f "Expecting arrival within {self.prefs.timeout} seconds")
     self:EnableTimer("Check Stub", self.prefs.timeout, function() self:MoveTimedOut() end)
 
     ---@diagnostic disable-next-line: redundant-parameter
@@ -486,7 +526,7 @@ function Explorer:DetermineNextRoom()
   else
     d("self.status")
     for k, v in pairs(self.status) do
-      d(f"  {k} = {v}")
+      d(f "  {k} = {v}")
     end
     self.stub_to_check = nil
     local next_room = self:FindCandidateRoom()
@@ -506,7 +546,7 @@ function Explorer:DetermineNextRoom()
     local next_area = getRoomArea(next_room)
     raiseEvent("onNextRoomDetermined", next_room, next_area)
 
-    cecho(f"<yellow>Traveling to room {next_room} from {current_room}\n")
+    cecho(f "<yellow>Traveling to room {next_room} from {current_room}\n")
     -- A named timer, so that stopping exploration cancels it.
     self:EnableTimer("Start Speedwalk", self:MoveDelay(), function()
       -- Armed first, so that if anything below fails, the timer still ends this.
@@ -533,7 +573,7 @@ end
 -- Stop exploring because a move did not take us to a new room.
 function Explorer:StopBlocked(room_id, stub)
   local direction = self.stub_map[tonumber(stub)]
-  cecho(f"<red>Could not move {direction} from room {room_id}. Stopping exploration.\n")
+  cecho(f "<red>Could not move {direction} from room {room_id}. Stopping exploration.\n")
   self:StopExplore(true, false)
 end
 
@@ -541,7 +581,7 @@ end
 function Explorer:StopSpeedwalkFailed()
   local dest = self.status.dest
   local room_id = getPlayerRoom()
-  cecho(f"<red>Speedwalk to room {dest} ended in room {room_id}. Stopping exploration.\n")
+  cecho(f "<red>Speedwalk to room {dest} ended in room {room_id}. Stopping exploration.\n")
   self:StopExplore(true, false)
 end
 
@@ -551,7 +591,7 @@ function Explorer:StopWalkNotStarted(reason)
   local dest = self.status.dest
 
   self.status.walk_started = false
-  cecho(f"<red>Could not walk to room {dest}: {reason} Stopping exploration.\n")
+  cecho(f "<red>Could not walk to room {dest}: {reason} Stopping exploration.\n")
   self:StopExplore(true, false)
 end
 
@@ -601,7 +641,7 @@ function Explorer:CheckStub()
   if not self.stub_to_check then return true end
 
   local room_id, stub = self.stub_to_check.room_id, self.stub_to_check.stub
-  d(f"Checking for stub {stub} ({self.stub_map[tonumber(stub)]}) in room {room_id}")
+  d(f "Checking for stub {stub} ({self.stub_map[tonumber(stub)]}) in room {room_id}")
 
   self:DisableTimer("Check Stub")
 
@@ -611,10 +651,10 @@ function Explorer:CheckStub()
   if table.is_empty(check_stubs) then return true end
 
   self.stub_to_check = { room_id = nil, stub = nil }
-  d(f"Stub for this room {room_id}")
+  d(f "Stub for this room {room_id}")
   d(cs)
   if table.index_of(check_stubs, stub) then
-    d(f"Stub {stub} ({self.stub_map[tonumber(stub)]}) is still a stub, stopping")
+    d(f "Stub {stub} ({self.stub_map[tonumber(stub)]}) is still a stub, stopping")
     self:StopBlocked(room_id, stub)
     return false
   end
@@ -637,12 +677,12 @@ function Explorer:CheckDoor()
   -- We suddenly don't have a door anymore? ??? ???
   local door_status = doors[dir_short]
   if door_status == nil then
-    cecho(f"<red>[CheckDoor] No {dir_short} door in room {room_id} has vanished!\n")
+    cecho(f "<red>[CheckDoor] No {dir_short} door in room {room_id} has vanished!\n")
     self:DetermineNextRoom()
     return
   end
 
-  d(f"The {dir_short} door in room {room_id} is {door_status}")
+  d(f "The {dir_short} door in room {room_id} is {door_status}")
 
   -- Whew, we still have the door. Let's check its status to see if it
   -- is open yet.
@@ -650,7 +690,7 @@ function Explorer:CheckDoor()
     -- Oh well, was this a stub? If so, let's ignore it and move on.
     local stub = self.status.stub
     if stub then
-      d(f"Ignoring stub {stub} in room {room_id} because it is still closed.")
+      d(f "Ignoring stub {stub} in room {room_id} because it is still closed.")
       self:IgnoreStub(room_id, stub)
     end
     self:DetermineNextRoom()
@@ -715,7 +755,7 @@ function Explorer:ResolveStub(direction, room)
 
   local stub = self.stub_map[name]
   if not stub then
-    cecho(f"<red>Unknown direction '{direction}'.\n")
+    cecho(f "<red>Unknown direction '{direction}'.\n")
     return
   end
 
@@ -739,11 +779,11 @@ function Explorer:IgnoreDirection(direction, room)
   if not room_id then return end
 
   if not table.index_of(getExitStubs1(room_id) or {}, stub) then
-    cecho(f"<orange>Room {room_id} has no {name} exit stub.\n")
+    cecho(f "<orange>Room {room_id} has no {name} exit stub.\n")
   elseif self:IgnoreStub(room_id, stub) then
-    cecho(f"<green>Ignoring the {name} exit stub in room {room_id}.\n")
+    cecho(f "<green>Ignoring the {name} exit stub in room {room_id}.\n")
   else
-    cecho(f"<orange>The {name} exit stub in room {room_id} is already ignored.\n")
+    cecho(f "<orange>The {name} exit stub in room {room_id} is already ignored.\n")
   end
 end
 
@@ -752,9 +792,9 @@ function Explorer:UnignoreDirection(direction, room)
   if not room_id then return end
 
   if self:UnignoreStub(room_id, stub) then
-    cecho(f"<green>No longer ignoring the {name} exit stub in room {room_id}.\n")
+    cecho(f "<green>No longer ignoring the {name} exit stub in room {room_id}.\n")
   else
-    cecho(f"<orange>The {name} exit stub in room {room_id} is not ignored.\n")
+    cecho(f "<orange>The {name} exit stub in room {room_id} is not ignored.\n")
   end
 end
 
@@ -840,7 +880,7 @@ function Explorer:FindCandidateRoom()
     end
   end
 
-  d(f"Cheapest path from {room_id} is to room {tostring(cheapest_room)}, cost {cheapest_cost}")
+  d(f "Cheapest path from {room_id} is to room {tostring(cheapest_room)}, cost {cheapest_cost}")
 
   return cheapest_room
 end
@@ -848,7 +888,7 @@ end
 function Explorer:Arrived(event, current_room_id)
   if not self.exploring then return end
 
-  d(f"event = {event}")
+  d(f "event = {event}")
 
   self:UpdateLabel()
 
@@ -899,11 +939,11 @@ function Explorer:Arrived(event, current_room_id)
   -- This basically serves to stop the timer so that it doesn't go off.
   -- We did arrive, so clearly we were not blocked. It shouldn't return true,
   -- because we moved.
-  d(f"Checking stub {self.stub_map[self.status.stub]} ({self.status.stub}) for room {current_room_id}")
+  d(f "Checking stub {self.stub_map[self.status.stub]} ({self.status.stub}) for room {current_room_id}")
   if self:CheckStub() == false then
     return
   end
-  d(f"Stub {self.stub_map[self.status.stub]} ({self.status.stub}) is not a stub, continuing")
+  d(f "Stub {self.stub_map[self.status.stub]} ({self.status.stub}) is not a stub, continuing")
 
   ---@diagnostic disable-next-line: redundant-parameter
   raiseEvent("onDirectionExplored", current_room_id, self.status.start, self.stub_map[self.status.stub])
@@ -917,7 +957,7 @@ function Explorer:Arrived(event, current_room_id)
   -- If we wanted into a new area, we want to return to the previous area.
   -- DetermineNextRoom calls IdentifyRoomsToExplore, which will return
   -- to the previous area if we have haven't explored it all.
---[[
+  --[[
   if area_id ~= self.previous_area then
     self:DetermineNextRoom()
     return
@@ -947,7 +987,7 @@ end
 function Explorer:SpeedwalkStarted(event)
   if not self.exploring then return end
 
-  cecho(f"<yellow>Speedwalking started from {self.status.start} to {self.status.dest}\n")
+  cecho(f "<yellow>Speedwalking started from {self.status.start} to {self.status.dest}\n")
 end
 
 -- While a walk is paused the character can go elsewhere, and resuming finds a new
@@ -990,7 +1030,7 @@ function Explorer:Uninstall(event, package)
     self[k] = nil
   end
 
----@diagnostic disable-next-line: assign-type-mismatch
+  ---@diagnostic disable-next-line: assign-type-mismatch
   Explorer = nil
 end
 
@@ -1043,7 +1083,7 @@ function Explorer:SetupEventHandlers()
     local handler = self.config.name .. "." .. event
     if not registered_handlers[handler] then
       local result, err = registerNamedEventHandler(self.config.name, handler, event,
-      function(...) self:EventHandler(...) end)
+        function(...) self:EventHandler(...) end)
       if not result then
         cecho("<orange_red>Failed to register event handler for " .. event .. "\n")
       end
@@ -1051,6 +1091,9 @@ function Explorer:SetupEventHandlers()
   end
 end
 
+-- Loaded with the script rather than from an event, so that the preferences
+-- are there for anything that runs from here on, whatever happens in Setup.
+Explorer:LoadPreferences()
 Explorer:SetupEventHandlers()
 
 -- ----------------------------------------------------------------------------
@@ -1126,14 +1169,14 @@ function Explorer:UpdateLabel()
   local average_string = string.format("%.3f", average)
 
   local text =
-         f "{area_name} ({area_id})\n"
-         .. f "Rooms to finish: {todo_count}\n"
-         .. f "Exits to explore: {todo_stubs}\n"
-         .. f "--------------------------\n"
-         .. f "Exits explored: {found}\n"
-         .. f "Exits ignored: {ignore}\n"
-         .. f "Exploration time: {self.g.date.shms(elapsed, true)}\n"
-         .. f "Average speed: {average_string}s"
+      f "{area_name} ({area_id})\n"
+      .. f "Rooms to finish: {todo_count}\n"
+      .. f "Exits to explore: {todo_stubs}\n"
+      .. f "--------------------------\n"
+      .. f "Exits explored: {found}\n"
+      .. f "Exits ignored: {ignore}\n"
+      .. f "Exploration time: {self.g.date.shms(elapsed, true)}\n"
+      .. f "Average speed: {average_string}s"
 
   local map_label_id =
       createMapLabel(area_id,
@@ -1189,7 +1232,6 @@ function Explorer:DoorChange(room_id, door_command, status, old_status)
   end
 end
 
-
 -- ----------------------------------------------------------------------------
 -- Timers
 -- ----------------------------------------------------------------------------
@@ -1197,14 +1239,14 @@ end
 -- Always starts fresh. Resuming a stopped timer would keep its old interval, so
 -- a changed preference wouldn't apply.
 function Explorer:EnableTimer(name, interval, callback)
-  d(f"Enabling timer {name} with interval {interval}")
+  d(f "Enabling timer {name} with interval {interval}")
   deleteNamedTimer(self.config.name, name)
   registerNamedTimer(self.config.name, name, interval, callback, false)
 end
 
 function Explorer:DisableTimer(name)
   if table.index_of(getNamedTimers(self.config.name), name) then
-    d(f"Disabling timer {name}")
+    d(f "Disabling timer {name}")
     stopNamedTimer(self.config.name, name)
   end
 end
@@ -1220,7 +1262,7 @@ Explorer.help_styles = {
 Explorer.help = {
   name = Explorer.config.name,
   topics = {
-    usage = f[[
+    usage = f [[
 <h1><u>{Explorer.config.name}</u></h1>
 
 Syntax: <b>explore</b> [<b>command</b>]
